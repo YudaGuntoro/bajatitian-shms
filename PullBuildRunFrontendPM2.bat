@@ -73,6 +73,9 @@ echo Building frontend...
 CALL npm run build
 IF ERRORLEVEL 1 GOTO Failed
 
+CALL :CopyStandaloneAssets
+IF ERRORLEVEL 1 GOTO Failed
+
 echo.
 echo Restarting frontend with PM2...
 CALL pm2 describe "%PM2_APP_NAME%" >nul 2>&1
@@ -99,6 +102,27 @@ echo Check status: pm2 status
 echo View logs: pm2 logs %PM2_APP_NAME%
 echo ============================================================
 pause
+exit /b 0
+
+:CopyStandaloneAssets
+IF NOT EXIST ".next\standalone\server.js" (
+    echo ERROR: Standalone server was not found:
+    echo %FRONTEND_DIR%\.next\standalone\server.js
+    exit /b 1
+)
+
+echo.
+echo Copying standalone static assets...
+IF EXIST ".next\static" (
+    IF NOT EXIST ".next\standalone\.next" mkdir ".next\standalone\.next" >nul 2>&1
+    xcopy ".next\static" ".next\standalone\.next\static" /E /I /Y >nul
+    IF ERRORLEVEL 1 exit /b 1
+)
+
+IF EXIST "public" (
+    xcopy "public" ".next\standalone\public" /E /I /Y >nul
+    IF ERRORLEVEL 1 exit /b 1
+)
 exit /b 0
 
 :CheckCommand
