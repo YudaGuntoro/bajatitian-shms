@@ -25,7 +25,7 @@ IF ERRORLEVEL 1 (
     exit /b 1
 )
 
-pm2 list
+CALL pm2 list
 echo.
 echo Checking frontend HTTP...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r = Invoke-WebRequest -Uri '%FRONTEND_URL%' -UseBasicParsing -TimeoutSec 10; Write-Host ('Frontend HTTP: ' + [int]$r.StatusCode) } catch { Write-Host ('Frontend HTTP ERROR: ' + $_.Exception.Message); exit 1 }"

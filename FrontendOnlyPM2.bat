@@ -84,32 +84,32 @@ cd /d "%FRONTEND_DIR%"
 IF ERRORLEVEL 1 GOTO Failed
 
 IF EXIST "package-lock.json" (
-    npm ci
+    CALL npm ci
 ) ELSE (
-    npm install
+    CALL npm install
 )
 IF ERRORLEVEL 1 GOTO Failed
 
 echo.
 echo Building frontend...
-npm run build
+CALL npm run build
 IF ERRORLEVEL 1 GOTO Failed
 
 echo.
 echo Restarting frontend with PM2...
-pm2 describe "%PM2_APP_NAME%" >nul 2>&1
+CALL pm2 describe "%PM2_APP_NAME%" >nul 2>&1
 IF NOT ERRORLEVEL 1 (
-    pm2 delete "%PM2_APP_NAME%"
+    CALL pm2 delete "%PM2_APP_NAME%"
 )
 
 SET "NODE_ENV=production"
 SET "PORT=%PORT%"
 SET "HOSTNAME=%HOST%"
 SET "SERVER_API_BASE_URL=http://localhost:5241"
-pm2 start ".next\standalone\server.js" --name "%PM2_APP_NAME%" --update-env
+CALL pm2 start ".next\standalone\server.js" --name "%PM2_APP_NAME%" --update-env
 IF ERRORLEVEL 1 GOTO Failed
 
-pm2 save
+CALL pm2 save
 IF ERRORLEVEL 1 GOTO Failed
 
 echo.
