@@ -8,6 +8,7 @@ SET "REMOTE=origin"
 SET "BRANCH=main"
 SET "PM2_APP_NAME=LeakTesterFrontend"
 SET "PORT=3000"
+SET "HOST=0.0.0.0"
 
 IF NOT "%~1"=="" SET "BRANCH=%~1"
 IF NOT "%~2"=="" SET "PORT=%~2"
@@ -18,6 +19,7 @@ echo Root: %ROOT_DIR%
 echo Source: %REMOTE%/%BRANCH%
 echo PM2 App: %PM2_APP_NAME%
 echo Port: %PORT%
+echo Host: %HOST%
 echo ============================================================
 
 cd /d "%ROOT_DIR%"
@@ -79,7 +81,10 @@ IF NOT ERRORLEVEL 1 (
 )
 
 SET "NODE_ENV=production"
-pm2 start npm --name "%PM2_APP_NAME%" -- run start
+SET "PORT=%PORT%"
+SET "HOSTNAME=%HOST%"
+SET "SERVER_API_BASE_URL=http://localhost:5241"
+pm2 start ".next\standalone\server.js" --name "%PM2_APP_NAME%" --update-env
 IF ERRORLEVEL 1 GOTO Failed
 
 pm2 save
@@ -88,7 +93,8 @@ IF ERRORLEVEL 1 GOTO Failed
 echo.
 echo ============================================================
 echo Frontend is running with PM2.
-echo URL: http://localhost:%PORT%
+echo Local server URL: http://localhost:%PORT%
+echo From another PC, use this server IP: http://SERVER-IP:%PORT%
 echo Check status: pm2 status
 echo View logs: pm2 logs %PM2_APP_NAME%
 echo ============================================================
