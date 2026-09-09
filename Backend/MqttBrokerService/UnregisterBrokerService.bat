@@ -1,7 +1,7 @@
 @echo off
 SETLOCAL EnableExtensions EnableDelayedExpansion
 
-SET "SERVICE_NAME=LeakTestMqttBroker"
+SET "SERVICE_NAME=SHMSMqttBroker"
 
 echo Unregistering %SERVICE_NAME% Windows Service...
 

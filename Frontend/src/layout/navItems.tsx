@@ -54,23 +54,18 @@ export const navItems: NavItem[] = [
   },
   {
     icon: <BoltIcon />,
-    name: "Leaktester Work Record",
-    path: "/work-record",
-  },
-  {
-    icon: <TaskIcon />,
-    name: "Form Manual",
-    path: "/form-manual",
+    name: "Mqtt Configuration",
+    path: "/mqtt-configuration",
   },
   {
     icon: <BoxCubeIcon />,
-    name: "Master Data",
-    subItems: [
-      { name: "Engine Model", path: "/engine-model" },
-      { name: "Parameter", path: "/parameters" },
-      { name: "Operator", path: "/operators" },
-      { name: "User", path: "/users" },
-    ],
+    name: "Location",
+    path: "/location",
+  },
+  {
+    icon: <TaskIcon />,
+    name: "Log Buffer",
+    path: "/log-buffer",
   },
   {
     icon: <SettingsIcon />,

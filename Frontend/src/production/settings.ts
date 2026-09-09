@@ -7,20 +7,62 @@ export type UnitSettings = {
   cycleTimeUnit: string;
 };
 
+export type TimezoneOption = "Asia/Jakarta" | "Asia/Bangkok" | "UTC";
+
 export type SystemSettings = UnitSettings & {
+  accUnit: string;
+  atrhUnit: string;
+  autoCleanupEnabled: boolean;
   backupDbLocation: string;
+  bufferWarningLimit: number;
+  endpointDownWarningSeconds: number;
+  logRetentionDays: number;
+  mainApiEndpoint: string;
+  mainApiToken: string;
+  maxBufferRecords: number;
+  maxRetry: number;
   plcIpAddress: string;
+  retryDelaySeconds: number;
   schedule: BackupSchedule;
+  sensorOfflineSeconds: number;
+  tiltUnit: string;
+  timezone: TimezoneOption;
+  uploadBatchSize: number;
+  uploadEnabled: boolean;
+  uploadFailedWarningLimit: number;
+  uploadIntervalSeconds: number;
+  uploadTimeoutSeconds: number;
+  vwUnit: string;
 };
 
-export const SYSTEM_SETTINGS_STORAGE_KEY = "yanmar-leaktester-backup-settings";
+export const SYSTEM_SETTINGS_STORAGE_KEY = "shms-system-backup-settings";
 
 export const defaultSystemSettings: SystemSettings = {
+  accUnit: "g",
+  atrhUnit: "C / %RH",
+  autoCleanupEnabled: true,
   backupDbLocation: "",
+  bufferWarningLimit: 1000,
   cycleTimeUnit: "s",
+  endpointDownWarningSeconds: 300,
+  logRetentionDays: 30,
+  mainApiEndpoint: "",
+  mainApiToken: "",
+  maxBufferRecords: 50000,
+  maxRetry: 5,
   plcIpAddress: "",
   pressureUnit: "MPa",
+  retryDelaySeconds: 30,
   schedule: "daily",
+  sensorOfflineSeconds: 60,
+  tiltUnit: "deg",
+  timezone: "Asia/Jakarta",
+  uploadBatchSize: 100,
+  uploadEnabled: true,
+  uploadFailedWarningLimit: 10,
+  uploadIntervalSeconds: 10,
+  uploadTimeoutSeconds: 15,
+  vwUnit: "Hz",
 };
 
 type ApiSystemSettings = {
@@ -31,13 +73,14 @@ type ApiSystemSettings = {
   plc_ip_address?: string | null;
 };
 
-function fromApiSettings(settings: ApiSystemSettings): SystemSettings {
+function fromApiSettings(settings: ApiSystemSettings, fallback: SystemSettings = defaultSystemSettings): SystemSettings {
   return {
+    ...fallback,
     backupDbLocation: settings.backup_db_location ?? "",
-    cycleTimeUnit: settings.cycle_time_unit ?? defaultSystemSettings.cycleTimeUnit,
+    cycleTimeUnit: settings.cycle_time_unit ?? fallback.cycleTimeUnit,
     plcIpAddress: settings.plc_ip_address ?? "",
-    pressureUnit: settings.pressure_unit ?? defaultSystemSettings.pressureUnit,
-    schedule: settings.backup_schedule ?? defaultSystemSettings.schedule,
+    pressureUnit: settings.pressure_unit ?? fallback.pressureUnit,
+    schedule: settings.backup_schedule ?? fallback.schedule,
   };
 }
 
@@ -69,22 +112,30 @@ export function saveSystemSettings(settings: SystemSettings) {
 }
 
 export async function fetchSystemSettings() {
+  const localSettings = readSystemSettings();
+
   try {
-    const settings = fromApiSettings(await apiGet<ApiSystemSettings>("/api/leaktester/settings"));
+    const settings = fromApiSettings(await apiGet<ApiSystemSettings>("/api/shms-system/settings"), localSettings);
     saveSystemSettings(settings);
     return settings;
   } catch {
-    return readSystemSettings();
+    return localSettings;
   }
 }
 
 export async function updateSystemSettings(settings: SystemSettings) {
-  const updated = fromApiSettings(await apiRequest<ApiSystemSettings>("/api/leaktester/settings", {
-    body: JSON.stringify(toApiSettings(settings)),
-    method: "PUT",
-  }));
-  saveSystemSettings(updated);
-  return updated;
+  saveSystemSettings(settings);
+
+  try {
+    const updated = fromApiSettings(await apiRequest<ApiSystemSettings>("/api/shms-system/settings", {
+      body: JSON.stringify(toApiSettings(settings)),
+      method: "PUT",
+    }), settings);
+    saveSystemSettings(updated);
+    return updated;
+  } catch {
+    return settings;
+  }
 }
 
 export function getUnitSettings(): UnitSettings {

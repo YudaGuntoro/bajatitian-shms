@@ -1,27 +1,110 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { ConfirmModal } from "@/components/ui/modal/ConfirmModal";
-import { CheckLineIcon, CopyIcon } from "@/icons";
-import { apiGet, apiRequest } from "@/lib/api";
-import { fetchSystemSettings, readSystemSettings, updateSystemSettings, type BackupSchedule, type SystemSettings } from "./settings";
-import type { LeakTestJudgement } from "./types";
+import { useToast } from "@/context/ToastContext";
+import { CheckLineIcon, PaperPlaneIcon } from "@/icons";
+import { apiGet } from "@/lib/api";
+import { fetchSystemSettings, readSystemSettings, updateSystemSettings, type SystemSettings, type TimezoneOption } from "./settings";
 
 const inputClass = "mt-2 h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand-400 focus:ring-3 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500";
 const labelClass = "text-xs font-bold uppercase text-slate-600 dark:text-slate-300";
-const backupActionClass = "inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800";
-const tableInputClass = "h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand-400 focus:ring-3 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500";
-type PageMessage = { kind: "ok" | "error"; text: string };
-const showJudgementMaster = true;
+const cardClass = "overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900";
+
+type HealthState = "online" | "offline" | "unknown";
+
+type SHMSStatus = {
+  last_mqtt_at?: string | null;
+};
+
+type MqttBrokerStatus = {
+  configured: boolean;
+  host?: string;
+  online: boolean;
+  port?: number;
+};
+
+function numericValue(value: string, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function formatStatus(status: HealthState) {
+  if (status === "online") return "Online";
+  if (status === "offline") return "Offline";
+  return "Waiting";
+}
+
+function statusClass(status: HealthState) {
+  if (status === "online") {
+    return "bg-teal-50 text-teal-700 ring-teal-600/15 dark:bg-teal-500/10 dark:text-teal-200 dark:ring-teal-400/20";
+  }
+
+  if (status === "offline") {
+    return "bg-red-50 text-red-700 ring-red-600/15 dark:bg-red-500/10 dark:text-red-200 dark:ring-red-400/20";
+  }
+
+  return "bg-slate-100 text-slate-600 ring-slate-500/15 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-500/25";
+}
+
+function SettingSection({ children, eyebrow, title }: { children: ReactNode; eyebrow?: string; title: string }) {
+  return (
+    <section className={cardClass}>
+      <div className="border-b border-slate-200 px-5 py-5 dark:border-slate-800">
+        {eyebrow ? <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-600">{eyebrow}</p> : null}
+        <h2 className={eyebrow ? "mt-2 text-base font-bold text-slate-900 dark:text-white" : "text-base font-bold text-slate-900 dark:text-white"}>
+          {title}
+        </h2>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function ToggleField({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex min-h-12 cursor-pointer items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+      <span className="text-sm font-bold text-slate-800 dark:text-slate-100">{label}</span>
+      <input
+        checked={checked}
+        className="size-5 accent-brand-500"
+        onChange={(event) => onChange(event.target.checked)}
+        type="checkbox"
+      />
+    </label>
+  );
+}
+
+function StatusCard({ label, note, status }: { label: string; note: string; status: HealthState }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+      <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-black ring-1 ${statusClass(status)}`}>
+        <span className={`size-2 rounded-full ${status === "online" ? "bg-teal-600" : status === "offline" ? "bg-red-600" : "bg-slate-400"}`} />
+        {formatStatus(status)}
+      </span>
+      <p className="mt-4 text-sm font-bold text-slate-900 dark:text-white">{label}</p>
+      <p className="mt-1 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">{note}</p>
+    </div>
+  );
+}
 
 export default function SettingPage() {
+  const toast = useToast();
   const [settings, setSettings] = useState<SystemSettings>(() => readSystemSettings());
-  const [judgements, setJudgements] = useState<LeakTestJudgement[]>([]);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [loadingJudgements, setLoadingJudgements] = useState(false);
-  const [savingJudgementId, setSavingJudgementId] = useState<number | null>(null);
-  const [message, setMessage] = useState<PageMessage | null>(null);
+  const [testingEndpoint, setTestingEndpoint] = useState(false);
+  const [brokerStatus, setBrokerStatus] = useState<HealthState>("unknown");
+  const [backendStatus, setBackendStatus] = useState<HealthState>("unknown");
+  const [lastMqttAt, setLastMqttAt] = useState<string | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -31,42 +114,31 @@ export default function SettingPage() {
       }
     });
 
-    return () => {
-      ignore = true;
-    };
-  }, []);
+    async function loadSystemInfo() {
+      const [statusResult, brokerResult] = await Promise.allSettled([
+        apiGet<SHMSStatus>("/api/shms-system/status"),
+        apiGet<MqttBrokerStatus>("/api/shms-system/mqtt-broker/status"),
+      ]);
 
-  useEffect(() => {
-    if (!showJudgementMaster) {
-      return;
-    }
-
-    let ignore = false;
-
-    async function loadJudgements() {
-      setLoadingJudgements(true);
-      try {
-        const rows = await apiGet<LeakTestJudgement[]>("/api/leaktester/judgements");
-        if (!ignore) {
-          setJudgements(rows);
-        }
-      } catch (err) {
-        if (!ignore) {
-          setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to load judgement master." });
-        }
-      } finally {
-        if (!ignore) {
-          setLoadingJudgements(false);
-        }
+      if (ignore) {
+        return;
       }
+
+      setBackendStatus(statusResult.status === "fulfilled" ? "online" : "offline");
+      setLastMqttAt(statusResult.status === "fulfilled" ? statusResult.value.last_mqtt_at ?? null : null);
+      setBrokerStatus(brokerResult.status === "fulfilled" && brokerResult.value.online ? "online" : "offline");
     }
 
-    void loadJudgements();
+    void loadSystemInfo();
 
     return () => {
       ignore = true;
     };
   }, []);
+
+  function patchSettings(patch: Partial<SystemSettings>) {
+    setSettings((current) => ({ ...current, ...patch }));
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -78,270 +150,261 @@ export default function SettingPage() {
     try {
       setSettings(await updateSystemSettings(settings));
       setIsConfirmOpen(false);
-      setMessage({ kind: "ok", text: "Settings saved." });
+      toast.success({ message: "Settings saved." });
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to save settings." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to save settings." });
     } finally {
       setSaving(false);
     }
   }
 
-  function updateJudgementDraft(id: number, patch: Partial<Pick<LeakTestJudgement, "judgement_name" | "result" | "note">>) {
-    setJudgements((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
-    setMessage(null);
-  }
-
-  async function saveJudgement(item: LeakTestJudgement) {
-    setSavingJudgementId(item.id);
-    setMessage(null);
-
-    try {
-      const updated = await apiRequest<LeakTestJudgement>(`/api/leaktester/judgements/${item.id}`, {
-        body: JSON.stringify({
-          judgement_name: item.judgement_name,
-          result: item.result,
-          note: item.note ?? "",
-          is_deleted: item.is_deleted ?? false,
-        }),
-        method: "PUT",
-      });
-
-      setJudgements((current) => current.map((row) => (row.id === item.id ? updated : row)));
-      setMessage({ kind: "ok", text: "Judgement master saved." });
-    } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to save judgement master." });
-    } finally {
-      setSavingJudgementId(null);
+  async function testMainEndpoint() {
+    if (!settings.mainApiEndpoint.trim()) {
+      toast.error({ message: "Main API endpoint is empty." });
+      return;
     }
-  }
 
-  async function pasteBackupPath() {
+    setTestingEndpoint(true);
     try {
-      const path = await navigator.clipboard.readText();
-      if (!path.trim()) {
-        setMessage({ kind: "error", text: "Clipboard is empty. Copy a folder path first." });
-        return;
-      }
-
-      setSettings((current) => ({ ...current, backupDbLocation: path.trim().replace(/^"|"$/g, "") }));
-      setMessage(null);
+      await fetch(settings.mainApiEndpoint.trim(), {
+        headers: settings.mainApiToken.trim() ? { Authorization: `Bearer ${settings.mainApiToken.trim()}` } : undefined,
+        method: "GET",
+      });
+      toast.success({ message: "Main API endpoint reachable." });
     } catch {
-      setMessage({ kind: "error", text: "Clipboard permission is unavailable. Paste the folder path manually." });
+      toast.error({ message: "Main API endpoint unreachable." });
+    } finally {
+      setTestingEndpoint(false);
     }
   }
 
   return (
     <>
       <div className="space-y-7">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-brand-600">System</p>
-        <h1 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">Setting</h1>
-      </div>
-
-      {message ? (
-        <div
-          className={
-            message.kind === "ok"
-              ? "rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
-              : "rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
-          }
-        >
-          {message.text}
-        </div>
-      ) : null}
-
-      <form
-        className="mx-4 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"
-        onSubmit={submit}
-      >
-        <div className="border-b border-slate-200 px-5 py-5 dark:border-slate-800">
-          <h2 className="text-base font-bold text-slate-900 dark:text-white">Unit Display</h2>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-brand-600">System</p>
+          <h1 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">Setting</h1>
         </div>
 
-        <div className="grid gap-5 px-5 py-6 sm:grid-cols-2">
-          <label className={labelClass}>
-            Pressure Unit
-            <input
-              className={inputClass}
-              onChange={(event) => {
-                setSettings((current) => ({ ...current, pressureUnit: event.target.value }));
-                setMessage(null);
-              }}
-              placeholder="MPa"
-              value={settings.pressureUnit}
-            />
-          </label>
+        <form className="mx-4 space-y-6" onSubmit={submit}>
+          <SettingSection eyebrow="Display" title="Unit Display">
+            <div className="grid gap-5 px-5 py-6 sm:grid-cols-2 xl:grid-cols-5">
+              <label className={labelClass}>
+                TILT Unit
+                <input className={inputClass} onChange={(event) => patchSettings({ tiltUnit: event.target.value })} placeholder="deg" value={settings.tiltUnit} />
+              </label>
+              <label className={labelClass}>
+                VW Unit
+                <input className={inputClass} onChange={(event) => patchSettings({ vwUnit: event.target.value })} placeholder="Hz" value={settings.vwUnit} />
+              </label>
+              <label className={labelClass}>
+                ATRH Unit
+                <input className={inputClass} onChange={(event) => patchSettings({ atrhUnit: event.target.value })} placeholder="C / %RH" value={settings.atrhUnit} />
+              </label>
+              <label className={labelClass}>
+                ACC Unit
+                <input className={inputClass} onChange={(event) => patchSettings({ accUnit: event.target.value })} placeholder="g" value={settings.accUnit} />
+              </label>
+              <label className={labelClass}>
+                Timezone
+                <select className={inputClass} onChange={(event) => patchSettings({ timezone: event.target.value as TimezoneOption })} value={settings.timezone}>
+                  <option value="Asia/Jakarta">Asia/Jakarta</option>
+                  <option value="Asia/Bangkok">Asia/Bangkok</option>
+                  <option value="UTC">UTC</option>
+                </select>
+              </label>
+            </div>
+          </SettingSection>
 
-          <label className={labelClass}>
-            Cycle Time Unit
-            <input
-              className={inputClass}
-              onChange={(event) => {
-                setSettings((current) => ({ ...current, cycleTimeUnit: event.target.value }));
-                setMessage(null);
-              }}
-              placeholder="s"
-              value={settings.cycleTimeUnit}
-            />
-          </label>
-        </div>
-
-        <div className="border-y border-slate-200 px-5 py-5 dark:border-slate-800">
-          <h2 className="text-base font-bold text-slate-900 dark:text-white">PLC Connection</h2>
-        </div>
-
-        <div className="grid gap-5 px-5 py-6 sm:grid-cols-2">
-          <label className={labelClass}>
-            PLC IP Address
-            <input
-              className={inputClass}
-              inputMode="decimal"
-              onChange={(event) => {
-                setSettings((current) => ({ ...current, plcIpAddress: event.target.value }));
-                setMessage(null);
-              }}
-              placeholder="192.168.1.10"
-              value={settings.plcIpAddress}
-            />
-          </label>
-        </div>
-
-        <div className="border-y border-slate-200 px-5 py-5 dark:border-slate-800">
-          <h2 className="text-base font-bold text-slate-900 dark:text-white">Backup Database</h2>
-        </div>
-
-        <div className="grid gap-5 px-5 py-6 lg:grid-cols-[minmax(0,1fr)_300px]">
-          <div className={labelClass}>
-            BackupDB Location
-            <div className="mt-2 grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto]">
-              <input
-                className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand-400 focus:ring-3 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500"
-                onChange={(event) => {
-                  setSettings((current) => ({ ...current, backupDbLocation: event.target.value }));
-                  setMessage(null);
-                }}
-                placeholder="D:\\Backup\\LeakTester"
-                value={settings.backupDbLocation}
-              />
-              <button className={backupActionClass} onClick={() => void pasteBackupPath()} type="button">
-                <CopyIcon className="size-5" />
-                Paste Path
+          <SettingSection eyebrow="Server" title="Main API Endpoint">
+            <div className="grid gap-5 px-5 py-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+              <label className={labelClass}>
+                Endpoint URL
+                <input
+                  className={inputClass}
+                  onChange={(event) => patchSettings({ mainApiEndpoint: event.target.value })}
+                  placeholder="https://server-utama.domain/api/upload"
+                  value={settings.mainApiEndpoint}
+                />
+              </label>
+              <label className={labelClass}>
+                API Token
+                <input
+                  className={inputClass}
+                  onChange={(event) => patchSettings({ mainApiToken: event.target.value })}
+                  placeholder="Bearer token"
+                  type="password"
+                  value={settings.mainApiToken}
+                />
+              </label>
+              <button
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 lg:col-span-2 lg:w-fit"
+                disabled={testingEndpoint}
+                onClick={() => void testMainEndpoint()}
+                type="button"
+              >
+                <PaperPlaneIcon className="size-5" />
+                {testingEndpoint ? "Testing" : "Test Connection"}
               </button>
             </div>
-            <p className="mt-2 text-xs font-semibold normal-case text-slate-500 dark:text-slate-400">
-              Copy a folder path from Explorer, then paste it here.
-            </p>
-          </div>
+          </SettingSection>
 
-          <label className={labelClass}>
-            Schedule
-            <select
-              className={inputClass}
-              onChange={(event) => {
-                setSettings((current) => ({ ...current, schedule: event.target.value as BackupSchedule }));
-                setMessage(null);
-              }}
-              value={settings.schedule}
+          <SettingSection eyebrow="Upload" title="Upload Configuration">
+            <div className="grid gap-5 px-5 py-6 sm:grid-cols-2 xl:grid-cols-5">
+              <ToggleField checked={settings.uploadEnabled} label="Auto Upload" onChange={(checked) => patchSettings({ uploadEnabled: checked })} />
+              <label className={labelClass}>
+                Upload Interval
+                <input
+                  className={inputClass}
+                  min={1}
+                  onChange={(event) => patchSettings({ uploadIntervalSeconds: numericValue(event.target.value, settings.uploadIntervalSeconds) })}
+                  type="number"
+                  value={settings.uploadIntervalSeconds}
+                />
+              </label>
+              <label className={labelClass}>
+                Batch Size
+                <input
+                  className={inputClass}
+                  min={1}
+                  onChange={(event) => patchSettings({ uploadBatchSize: numericValue(event.target.value, settings.uploadBatchSize) })}
+                  type="number"
+                  value={settings.uploadBatchSize}
+                />
+              </label>
+              <label className={labelClass}>
+                Timeout
+                <input
+                  className={inputClass}
+                  min={1}
+                  onChange={(event) => patchSettings({ uploadTimeoutSeconds: numericValue(event.target.value, settings.uploadTimeoutSeconds) })}
+                  type="number"
+                  value={settings.uploadTimeoutSeconds}
+                />
+              </label>
+              <label className={labelClass}>
+                Max Retry
+                <input
+                  className={inputClass}
+                  min={0}
+                  onChange={(event) => patchSettings({ maxRetry: numericValue(event.target.value, settings.maxRetry) })}
+                  type="number"
+                  value={settings.maxRetry}
+                />
+              </label>
+              <label className={labelClass}>
+                Retry Delay
+                <input
+                  className={inputClass}
+                  min={1}
+                  onChange={(event) => patchSettings({ retryDelaySeconds: numericValue(event.target.value, settings.retryDelaySeconds) })}
+                  type="number"
+                  value={settings.retryDelaySeconds}
+                />
+              </label>
+            </div>
+          </SettingSection>
+
+          <SettingSection eyebrow="Storage" title="Buffer & Storage">
+            <div className="grid gap-5 px-5 py-6 sm:grid-cols-2 xl:grid-cols-4">
+              <ToggleField checked={settings.autoCleanupEnabled} label="Auto Cleanup" onChange={(checked) => patchSettings({ autoCleanupEnabled: checked })} />
+              <label className={labelClass}>
+                Max Buffer Records
+                <input
+                  className={inputClass}
+                  min={100}
+                  onChange={(event) => patchSettings({ maxBufferRecords: numericValue(event.target.value, settings.maxBufferRecords) })}
+                  type="number"
+                  value={settings.maxBufferRecords}
+                />
+              </label>
+              <label className={labelClass}>
+                Log Retention
+                <input
+                  className={inputClass}
+                  min={1}
+                  onChange={(event) => patchSettings({ logRetentionDays: numericValue(event.target.value, settings.logRetentionDays) })}
+                  type="number"
+                  value={settings.logRetentionDays}
+                />
+              </label>
+              <label className={labelClass}>
+                Backup Location
+                <input
+                  className={inputClass}
+                  onChange={(event) => patchSettings({ backupDbLocation: event.target.value })}
+                  placeholder="D:\\Backup\\SHMS-System"
+                  value={settings.backupDbLocation}
+                />
+              </label>
+            </div>
+          </SettingSection>
+
+          <SettingSection eyebrow="Alert" title="Alert Threshold">
+            <div className="grid gap-5 px-5 py-6 sm:grid-cols-2 xl:grid-cols-4">
+              <label className={labelClass}>
+                Sensor Offline
+                <input
+                  className={inputClass}
+                  min={10}
+                  onChange={(event) => patchSettings({ sensorOfflineSeconds: numericValue(event.target.value, settings.sensorOfflineSeconds) })}
+                  type="number"
+                  value={settings.sensorOfflineSeconds}
+                />
+              </label>
+              <label className={labelClass}>
+                Buffer Warning
+                <input
+                  className={inputClass}
+                  min={1}
+                  onChange={(event) => patchSettings({ bufferWarningLimit: numericValue(event.target.value, settings.bufferWarningLimit) })}
+                  type="number"
+                  value={settings.bufferWarningLimit}
+                />
+              </label>
+              <label className={labelClass}>
+                Upload Failed Warning
+                <input
+                  className={inputClass}
+                  min={1}
+                  onChange={(event) => patchSettings({ uploadFailedWarningLimit: numericValue(event.target.value, settings.uploadFailedWarningLimit) })}
+                  type="number"
+                  value={settings.uploadFailedWarningLimit}
+                />
+              </label>
+              <label className={labelClass}>
+                Endpoint Down
+                <input
+                  className={inputClass}
+                  min={10}
+                  onChange={(event) => patchSettings({ endpointDownWarningSeconds: numericValue(event.target.value, settings.endpointDownWarningSeconds) })}
+                  type="number"
+                  value={settings.endpointDownWarningSeconds}
+                />
+              </label>
+            </div>
+          </SettingSection>
+
+          <SettingSection eyebrow="Runtime" title="System Info">
+            <div className="grid gap-4 px-5 py-6 sm:grid-cols-2 xl:grid-cols-4">
+              <StatusCard label="Backend API" note="Local middleware API" status={backendStatus} />
+              <StatusCard label="MQTT Broker" note="Broker connection" status={brokerStatus} />
+              <StatusCard label="Last MQTT Received" note={lastMqttAt ? new Date(lastMqttAt).toLocaleString() : "No data"} status={lastMqttAt ? "online" : "unknown"} />
+              <StatusCard label="App Version" note="v1.3.0" status="online" />
+            </div>
+          </SettingSection>
+
+          <div className="flex justify-end">
+            <button
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-brand-500 px-5 text-sm font-bold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={saving}
+              type="submit"
             >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="flex justify-end border-t border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-900">
-          <button
-            className="h-10 rounded-lg bg-brand-500 px-5 text-sm font-bold text-white transition hover:bg-brand-600"
-            type="submit"
-          >
-            Save Setting
-          </button>
-        </div>
-      </form>
-
-      {showJudgementMaster ? (
-      <section className="mx-4 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="border-b border-slate-200 px-5 py-5 dark:border-slate-800">
-          <h2 className="text-base font-bold text-slate-900 dark:text-white">Judgement Master</h2>
-        </div>
-
-        <div className="overflow-x-auto p-5">
-          <table className="leak-rounded-header-table w-full min-w-[760px] border-separate border-spacing-0 text-left text-sm">
-            <thead className="bg-transparent text-xs uppercase text-white">
-              <tr>
-                <th className="w-32 rounded-l-lg bg-brand-500 px-5 py-3 text-center">Code</th>
-                <th className="bg-brand-500 px-4 py-3">Judgement Name</th>
-                <th className="w-36 bg-brand-500 px-4 py-3">Result</th>
-                <th className="bg-brand-500 px-4 py-3">Note</th>
-                <th className="w-32 rounded-r-lg bg-brand-500 px-5 py-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loadingJudgements ? (
-                <tr>
-                  <td className="px-3 py-5 text-sm font-semibold text-slate-500 dark:text-slate-400" colSpan={5}>
-                    Loading...
-                  </td>
-                </tr>
-              ) : null}
-
-              {!loadingJudgements && judgements.length === 0 ? (
-                <tr>
-                  <td className="px-3 py-5 text-sm font-semibold text-slate-500 dark:text-slate-400" colSpan={5}>
-                    No judgement data.
-                  </td>
-                </tr>
-              ) : null}
-
-              {judgements.map((item) => (
-                <tr key={item.id}>
-                  <td className="border-b border-slate-100 px-3 py-3 text-center font-black text-slate-900 dark:border-slate-800 dark:text-white">
-                    {item.judgement_code}
-                  </td>
-                  <td className="border-b border-slate-100 px-3 py-3 dark:border-slate-800">
-                    <input
-                      className={tableInputClass}
-                      onChange={(event) => updateJudgementDraft(item.id, { judgement_name: event.target.value })}
-                      value={item.judgement_name}
-                    />
-                  </td>
-                  <td className="border-b border-slate-100 px-3 py-3 dark:border-slate-800">
-                    <select
-                      className={tableInputClass}
-                      onChange={(event) => updateJudgementDraft(item.id, { result: event.target.value as LeakTestJudgement["result"] })}
-                      value={item.result ?? ""}
-                    >
-                      <option value=""></option>
-                      <option value="OK">OK</option>
-                      <option value="NG">NG</option>
-                    </select>
-                  </td>
-                  <td className="border-b border-slate-100 px-3 py-3 dark:border-slate-800">
-                    <input
-                      className={tableInputClass}
-                      onChange={(event) => updateJudgementDraft(item.id, { note: event.target.value })}
-                      value={item.note ?? ""}
-                    />
-                  </td>
-                  <td className="border-b border-slate-100 px-3 py-3 text-right dark:border-slate-800">
-                    <button
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-brand-500 px-4 text-sm font-bold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={savingJudgementId === item.id}
-                      onClick={() => void saveJudgement(item)}
-                      type="button"
-                    >
-                      <CheckLineIcon className="size-4" />
-                      {savingJudgementId === item.id ? "Saving" : "Save"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-      ) : null}
+              <CheckLineIcon className="size-4" />
+              {saving ? "Saving" : "Save Setting"}
+            </button>
+          </div>
+        </form>
       </div>
 
       <ConfirmModal
@@ -349,7 +412,7 @@ export default function SettingPage() {
         confirmText="Yes, Save"
         isOpen={isConfirmOpen}
         isLoading={saving}
-        message="Are you sure you want to save these settings? Unit display and backup configuration will be updated."
+        message="Are you sure you want to save these settings?"
         onClose={() => setIsConfirmOpen(false)}
         onConfirm={() => void confirmSave()}
         title="Save Setting?"

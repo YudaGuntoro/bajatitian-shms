@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import ProductionDashboard from "@/production/ProductionDashboard";
 
 export const metadata: Metadata = {
-  title: "Leaktester Work Record | PT. Yanmar Diesel Indonesia",
-  description: "Leaktester work record and inspection monitoring dashboard",
+  title: "SHMS-System | PT. Baja Titian Utama",
+  description: "SHMS-System and inspection monitoring dashboard",
 };
 
-export default function LeaktesterWorkRecordHome() {
+export default function SHMSSystemHome() {
   return <ProductionDashboard />;
 }

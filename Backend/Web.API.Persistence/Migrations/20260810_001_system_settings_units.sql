@@ -1,4 +1,4 @@
--- Leaktester Work Record - global system settings and unit master data.
+-- SHMS-System - global system settings and unit master data.
 
 CREATE TABLE IF NOT EXISTS measurement_units (
     id INT AUTO_INCREMENT PRIMARY KEY,

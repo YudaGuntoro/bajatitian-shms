@@ -1,5 +1,5 @@
-export const API_ACTIVITY_EVENT = "leaktester:api-activity";
-export const API_ACTIVITY_STORAGE_KEY = "leaktester:last-api-at";
+export const API_ACTIVITY_EVENT = "shms-system:api-activity";
+export const API_ACTIVITY_STORAGE_KEY = "shms-system:last-api-at";
 
 export type ApiActivityEventDetail = {
   at: string;

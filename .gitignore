@@ -32,10 +32,13 @@ deploy/*.env
 
 # Local verification/output files
 .codex-runtime/
+.codex-tools/
+.codex-worker-decompiled/
 .verify-*/
 **/.verify-*/
 **/verify-bin/
 **/verify-obj/
+**/.next-old-*/
 MaintenanceApp/.codex/
 MaintenanceApp/DatabaseMigratorTemp/
 run-*.log

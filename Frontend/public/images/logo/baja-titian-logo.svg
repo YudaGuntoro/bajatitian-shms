@@ -1,0 +1,32 @@
+<svg aria-label="Baja Titian Utama" role="img" viewBox="0 0 560 220" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="btu-blue" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#2468ff"/>
+      <stop offset="1" stop-color="#42b8e8"/>
+    </linearGradient>
+  </defs>
+  <rect fill="none" height="220" width="560"/>
+  <g fill="none" stroke="#2b2f33" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M34 144h154" stroke-width="9"/>
+    <path d="M58 144V96h78l44 48" stroke-width="8"/>
+    <path d="M58 96l78 48M98 96v48M136 96v48" stroke-width="5"/>
+    <path d="M70 144v42M95 144v42" stroke-width="10"/>
+    <path d="M57 186h51" stroke-width="9"/>
+  </g>
+  <g>
+    <path d="M254 36c-49 0-89 39-89 88s40 88 89 88c24 0 46-10 62-25" fill="none" stroke="#2b2f33" stroke-linecap="round" stroke-width="18"/>
+    <path d="M254 61c-35 0-63 28-63 63s28 63 63 63c16 0 31-6 42-16" fill="none" stroke="#f8fbff" stroke-linecap="round" stroke-width="9"/>
+    <path d="M223 101l32 31 75-63" fill="none" stroke="#2b2f33" stroke-linecap="square" stroke-width="18"/>
+    <path d="M225 91l30 30 74-62" fill="none" stroke="url(#btu-blue)" stroke-linecap="square" stroke-width="8"/>
+  </g>
+  <g transform="translate(206 132)">
+    <rect fill="#f8fbff" height="33" rx="3" stroke="#2b2f33" stroke-width="5" width="137"/>
+    <path d="M8 16h121M22 7v20M45 7v20M68 7v20M91 7v20M114 7v20" stroke="#4ba5d8" stroke-linecap="round" stroke-width="4"/>
+  </g>
+  <path d="M357 35v150" stroke="#2b2f33" stroke-linecap="round" stroke-width="4"/>
+  <g fill="#2b2f33" font-family="Arial, Helvetica, sans-serif" font-size="44" font-weight="800">
+    <text x="382" y="76">BAJA</text>
+    <text x="382" y="123">TITIAN</text>
+    <text x="382" y="170">UTAMA</text>
+  </g>
+</svg>

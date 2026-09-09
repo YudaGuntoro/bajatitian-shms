@@ -74,13 +74,17 @@ public sealed class FileLogger : ILogger
 
 public sealed class FileLogWriter : IDisposable
 {
-    private readonly object _sync = new();
+    private readonly ConcurrentQueue<LogEntry> _queue = new();
     private readonly string _logDirectory;
+    private readonly Timer _timer;
+    private int _isDraining;
+    private bool _disposed;
 
     public FileLogWriter(string logDirectory)
     {
         _logDirectory = logDirectory;
         Directory.CreateDirectory(_logDirectory);
+        _timer = new Timer(_ => DrainQueue(), null, TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(250));
     }
 
     public void Write(
@@ -91,18 +95,43 @@ public sealed class FileLogWriter : IDisposable
         Exception? exception)
     {
         var now = DateTimeOffset.Now;
-        var filePath = Path.Combine(_logDirectory, $"mqtt-broker-{now:yyyyMMdd}.log");
         var line = BuildLine(now, logLevel, categoryName, eventId, message, exception);
-
-        lock (_sync)
-        {
-            Directory.CreateDirectory(_logDirectory);
-            File.AppendAllText(filePath, line, Encoding.UTF8);
-        }
+        _queue.Enqueue(new LogEntry(now, line));
     }
 
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _timer.Dispose();
+        DrainQueue();
+    }
+
+    private void DrainQueue()
+    {
+        if (Interlocked.Exchange(ref _isDraining, 1) == 1)
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(_logDirectory);
+
+            while (_queue.TryDequeue(out var entry))
+            {
+                var filePath = Path.Combine(_logDirectory, $"mqtt-broker-{entry.Timestamp:yyyyMMdd}.log");
+                File.AppendAllText(filePath, entry.Line, Encoding.UTF8);
+            }
+        }
+        finally
+        {
+            Volatile.Write(ref _isDraining, 0);
+        }
     }
 
     private static string BuildLine(
@@ -142,4 +171,6 @@ public sealed class FileLogWriter : IDisposable
 
         return builder.ToString();
     }
+
+    private sealed record LogEntry(DateTimeOffset Timestamp, string Line);
 }

@@ -1,12 +1,14 @@
 "use client";
+"use client";
 
-import YanmarMark from "@/components/brand/YanmarMark";
-import { EyeCloseIcon, EyeIcon } from "@/icons";
+import SHMSMark from "@/components/brand/SHMSMark";
+import { EyeCloseIcon, EyeIcon, LockIcon, UserIcon } from "@/icons";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useId, useState } from "react";
 import { apiPost } from "@/lib/api";
 import { hasValidAuthSession, saveAuthSession } from "@/lib/auth";
 import type { LoginResponse } from "@/lib/types";
+import { useToast } from "@/context/ToastContext";
 
 function safeNextPath(value: string | null) {
   return value?.startsWith("/") && !value.startsWith("//") && !value.startsWith("/signin") ? value : "/";
@@ -24,7 +26,7 @@ export default function SignInPage() {
   const [autofillLocked, setAutofillLocked] = useState(true);
   const [fieldNonce, setFieldNonce] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     if (hasValidAuthSession()) {
@@ -40,49 +42,61 @@ export default function SignInPage() {
     event.preventDefault();
 
     if (!username.trim() || !password) {
-      setError("Username and password are required.");
+      toast.error({ message: "Username and password are required." });
       return;
     }
 
     setLoading(true);
-    setError(null);
     try {
       const response = await apiPost<LoginResponse>("/api/auth/login", {
         username: username.trim(),
         password,
       });
       saveAuthSession(response);
+      toast.success({ message: "Login successful!" });
       router.push(nextPath);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed.");
+      toast.error({ message: err instanceof Error ? err.message : "Login failed." });
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="relative flex min-h-screen w-full items-center justify-center bg-white px-4 py-10 dark:bg-gray-950 sm:px-6 lg:w-1/2 lg:px-10">
-      <div className="relative w-full max-w-[448px]">
-        <div className="rounded-2xl border border-[#d9e2ef] bg-white px-8 py-10 shadow-[0_24px_60px_rgba(15,23,42,0.14)] dark:border-gray-800 dark:bg-gray-900 dark:shadow-[0_24px_60px_rgba(0,0,0,0.28)] sm:px-8">
-          <div className="mb-7 text-center">
-            <YanmarMark className="mx-auto h-auto w-32" />
-            <p className="mt-4 text-sm text-[#263a56] dark:text-gray-400">Sign in to access your dashboard</p>
+    <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden px-4 py-8 text-white sm:px-6">
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 scale-[1.01] bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: "url('/images/auth/shms-bridge-login.png')" }}
+      />
+      <div className="absolute inset-0 bg-[#07121d]/42" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(51,131,202,0.08),transparent_55%),linear-gradient(180deg,rgba(7,18,29,0.18),rgba(7,18,29,0.62))]" />
+
+      <div className="relative z-10 w-full max-w-[500px]">
+        <div className="rounded-lg border border-white/18 bg-[#172231]/84 px-8 py-10 shadow-[0_28px_80px_rgba(0,0,0,0.36)] backdrop-blur-[6px] sm:px-8">
+          <div className="mb-8 text-center">
+            <div className="mx-auto flex h-20 w-52 items-center justify-center">
+              <SHMSMark className="h-full w-full object-contain" variant="dark" />
+            </div>
+            <h1 className="mt-5 text-[15px] font-extrabold leading-tight text-white whitespace-nowrap sm:text-[20px] md:text-[22px]">
+              Structural Health Monitoring System
+            </h1>
+            <p className="mt-2 text-sm font-medium text-[#9db8d2]">(SHMS)</p>
+            <p className="mt-3 text-sm text-[#b8c7d8]">Bridge Safety Monitoring</p>
           </div>
 
-          {error ? (
-            <div className="mb-5 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-500/30 dark:bg-red-500/15 dark:text-red-300">
-              {error}
-            </div>
-          ) : null}
-
           <form autoComplete="off" data-form-type="other" onSubmit={(event) => void submit(event)}>
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div>
+                <label className="mb-2 block text-xs font-extrabold uppercase text-white" htmlFor={`production-user-${usernameFieldId}`}>
+                  Username
+                </label>
                 <div className="relative">
+                  <UserIcon className="pointer-events-none absolute left-4 top-1/2 z-10 size-5 -translate-y-1/2 text-[#9db0c3]" />
                   <input
                     autoCapitalize="none"
                     autoComplete="new-password"
-                    className="h-[50px] w-full rounded-md border border-[#c7d4e8] bg-white px-10 text-sm text-[#172033] outline-none transition placeholder:text-[#8498b6] focus:border-[#e60028] focus:ring-3 focus:ring-red-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white/90 dark:placeholder:text-gray-500"
+                    className="h-12 w-full rounded-md border border-transparent bg-[#293440] px-11 text-sm font-medium text-white outline-none transition placeholder:text-[#a9bbcc] focus:border-[#2b74ff] focus:bg-[#2b3643] focus:ring-3 focus:ring-[#2b74ff]/18"
                     data-1p-ignore="true"
                     data-form-type="other"
                     data-login-field="true"
@@ -93,7 +107,7 @@ export default function SignInPage() {
                     name={fieldNonce ? `production-operator-${fieldNonce}` : `production-operator-${usernameFieldId}`}
                     onChange={(event) => setUsername(event.target.value)}
                     onFocus={() => setAutofillLocked(false)}
-                    placeholder="Username"
+                    placeholder="Enter your username"
                     readOnly={autofillLocked}
                     spellCheck={false}
                     type="search"
@@ -103,10 +117,14 @@ export default function SignInPage() {
               </div>
 
               <div>
+                <label className="mb-2 block text-xs font-extrabold uppercase text-white" htmlFor={`production-secret-${passwordFieldId}`}>
+                  Password
+                </label>
                 <div className="relative">
+                  <LockIcon className="pointer-events-none absolute left-4 top-1/2 z-10 size-5 -translate-y-1/2 text-[#9db0c3]" />
                   <input
                     autoComplete="new-password"
-                    className="h-[50px] w-full rounded-md border border-[#c7d4e8] bg-white px-10 pr-12 text-sm text-[#172033] outline-none transition placeholder:text-[#8498b6] focus:border-[#e60028] focus:ring-3 focus:ring-red-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white/90 dark:placeholder:text-gray-500"
+                    className="h-12 w-full rounded-md border border-transparent bg-[#293440] px-11 pr-12 text-sm font-medium text-white outline-none transition placeholder:text-[#a9bbcc] focus:border-[#2b74ff] focus:bg-[#2b3643] focus:ring-3 focus:ring-[#2b74ff]/18"
                     data-1p-ignore="true"
                     data-form-type="other"
                     data-login-field="true"
@@ -116,14 +134,14 @@ export default function SignInPage() {
                     name={fieldNonce ? `production-key-${fieldNonce}` : `production-key-${passwordFieldId}`}
                     onChange={(event) => setPassword(event.target.value)}
                     onFocus={() => setAutofillLocked(false)}
-                    placeholder="Password"
+                    placeholder="Enter your password"
                     readOnly={autofillLocked}
                     type={showPassword ? "text" : "password"}
                     value={password}
                   />
                   <button
                     aria-label={showPassword ? "Hide password" : "Show password"}
-                    className="absolute right-4 top-1/2 z-30 -translate-y-1/2 cursor-pointer text-[#8498b6] transition-colors hover:text-[#536982] disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-500 dark:hover:text-gray-300"
+                    className="absolute right-4 top-1/2 z-30 -translate-y-1/2 cursor-pointer text-[#9db0c3] transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={loading}
                     onClick={() => setShowPassword((current) => !current)}
                     type="button"
@@ -137,8 +155,17 @@ export default function SignInPage() {
                 </div>
               </div>
 
+              <label className="flex w-fit items-center gap-2 text-sm text-[#c4d2e2]">
+                <input
+                  className="size-3.5 rounded border-white/40 bg-white text-[#2468ff] focus:ring-[#2468ff]"
+                  disabled={loading}
+                  type="checkbox"
+                />
+                Remember me
+              </label>
+
               <button
-                className="mt-1 inline-flex h-12 w-full items-center justify-center rounded-lg bg-[#ec101d] px-4 text-sm font-bold text-white shadow-[0_10px_18px_rgba(236,16,29,0.24)] transition-colors hover:bg-[#d90d19] focus:outline-none focus:ring-3 focus:ring-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-12 w-full items-center justify-center rounded-md bg-[#2468ff] px-4 text-sm font-extrabold text-white shadow-[0_12px_28px_rgba(36,104,255,0.34)] transition-colors hover:bg-[#1858e8] focus:outline-none focus:ring-3 focus:ring-[#2468ff]/28 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={loading}
                 type="submit"
               >
@@ -146,9 +173,11 @@ export default function SignInPage() {
               </button>
             </div>
           </form>
-
-          <p className="mt-8 text-center text-[11px] font-medium text-[#536982] dark:text-gray-500">Protected by enterprise-grade security protocols</p>
         </div>
+
+        <p className="mt-7 text-center text-[11px] font-medium text-[#89a1b8]/80">
+          © 2026 SHMS-System. All rights reserved.
+        </p>
       </div>
     </div>
   );

@@ -34,12 +34,12 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
 const toastStyles: Record<ToastType, string> = {
   error:
-    "border-error-200 bg-error-50 text-error-700 dark:border-error-500/30 dark:bg-error-500/15 dark:text-error-400",
-  info: "border-blue-light-200 bg-blue-light-50 text-blue-light-700 dark:border-blue-light-500/30 dark:bg-blue-light-500/15 dark:text-blue-light-400",
+    "border-gray-200 border-l-error-500 bg-white text-gray-800 dark:border-gray-800 dark:border-l-error-500 dark:bg-gray-900 dark:text-gray-100",
+  info: "border-gray-200 border-l-brand-500 bg-white text-gray-800 dark:border-gray-800 dark:border-l-brand-500 dark:bg-gray-900 dark:text-gray-100",
   success:
-    "border-success-200 bg-success-50 text-success-700 dark:border-success-500/30 dark:bg-success-500/15 dark:text-success-400",
+    "border-gray-200 border-l-success-600 bg-white text-gray-800 dark:border-gray-800 dark:border-l-success-500 dark:bg-gray-900 dark:text-gray-100",
   warning:
-    "border-warning-200 bg-warning-50 text-warning-700 dark:border-warning-500/30 dark:bg-warning-500/15 dark:text-orange-400",
+    "border-gray-200 border-l-warning-500 bg-white text-gray-800 dark:border-gray-800 dark:border-l-warning-500 dark:bg-gray-900 dark:text-gray-100",
 };
 
 const defaultTitles: Record<ToastType, string> = {
@@ -99,15 +99,15 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`rounded-lg border p-4 shadow-theme-lg ${toastStyles[toast.type]}`}
+            className={`rounded-lg border border-l-4 p-4 shadow-theme-lg ${toastStyles[toast.type]}`}
             role="status"
           >
             <div className="flex items-start gap-3">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold">
+                <p className="text-sm font-bold">
                   {toast.title ?? defaultTitles[toast.type]}
                 </p>
-                <p className="mt-1 text-sm opacity-90">{toast.message}</p>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{toast.message}</p>
               </div>
               <button
                 aria-label="Close toast"

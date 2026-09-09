@@ -39,31 +39,31 @@
   --color-white: #ffffff;
   --color-black: #101828;
 
-  --color-brand-25: #fff8f8;
-  --color-brand-50: #fff1f2;
-  --color-brand-100: #ffe1e5;
-  --color-brand-200: #ffc7d0;
-  --color-brand-300: #ff99aa;
-  --color-brand-400: #ff5b73;
-  --color-brand-500: #e60028;
-  --color-brand-600: #c90021;
-  --color-brand-700: #a5001b;
-  --color-brand-800: #850019;
-  --color-brand-900: #690016;
-  --color-brand-950: #3b000b;
+  --color-brand-25: #f6fbff;
+  --color-brand-50: #eef7ff;
+  --color-brand-100: #d9edff;
+  --color-brand-200: #b9ddff;
+  --color-brand-300: #8bc7ff;
+  --color-brand-400: #55a7f7;
+  --color-brand-500: #267fee;
+  --color-brand-600: #1766d7;
+  --color-brand-700: #1454b3;
+  --color-brand-800: #164890;
+  --color-brand-900: #173d73;
+  --color-brand-950: #10284c;
 
-  --color-blue-light-25: #fff8f8;
-  --color-blue-light-50: #fff1f2;
-  --color-blue-light-100: #ffe1e5;
-  --color-blue-light-200: #ffc7d0;
-  --color-blue-light-300: #ff99aa;
-  --color-blue-light-400: #ff5b73;
-  --color-blue-light-500: #e60028;
-  --color-blue-light-600: #c90021;
-  --color-blue-light-700: #a5001b;
-  --color-blue-light-800: #850019;
-  --color-blue-light-900: #690016;
-  --color-blue-light-950: #3b000b;
+  --color-blue-light-25: #f6fbff;
+  --color-blue-light-50: #eef7ff;
+  --color-blue-light-100: #d9edff;
+  --color-blue-light-200: #b9ddff;
+  --color-blue-light-300: #8bc7ff;
+  --color-blue-light-400: #55a7f7;
+  --color-blue-light-500: #267fee;
+  --color-blue-light-600: #1766d7;
+  --color-blue-light-700: #1454b3;
+  --color-blue-light-800: #164890;
+  --color-blue-light-900: #173d73;
+  --color-blue-light-950: #10284c;
 
   --color-gray-25: #fcfcfd;
   --color-gray-50: #f9fafb;
@@ -189,7 +189,7 @@
     cursor: pointer;
   }
   body {
-    @apply relative font-normal font-outfit z-1 bg-gray-50;
+    @apply relative font-normal font-outfit z-1 bg-[#f3f7fc];
   }
 }
 
@@ -198,23 +198,23 @@
 }
 
 @utility menu-item-active {
-  @apply bg-brand-50 text-brand-500 dark:bg-brand-500/[0.12] dark:text-brand-400;
+  @apply bg-brand-50 text-brand-600 dark:bg-brand-500/[0.14] dark:text-brand-300;
 }
 
 @utility menu-item-inactive {
-  @apply text-gray-700 hover:bg-gray-100 group-hover:text-gray-700 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-gray-300;
+  @apply text-slate-600 hover:bg-brand-50 hover:text-brand-700 group-hover:text-brand-700 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-gray-300;
 }
 
 @utility menu-item-icon {
-  @apply text-gray-500 group-hover:text-gray-700 dark:text-gray-400;
+  @apply text-slate-500 group-hover:text-brand-600 dark:text-gray-400;
 }
 
 @utility menu-item-icon-active {
-  @apply text-brand-500 dark:text-brand-400;
+  @apply text-brand-600 dark:text-brand-300;
 }
 
 @utility menu-item-icon-inactive {
-  @apply text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-300;
+  @apply text-slate-500 group-hover:text-brand-600 dark:text-gray-400 dark:group-hover:text-gray-300;
 }
 
 @utility menu-item-arrow {
@@ -234,11 +234,11 @@
 }
 
 @utility menu-dropdown-item-active {
-  @apply bg-brand-50 text-brand-500 dark:bg-brand-500/[0.12] dark:text-brand-400;
+  @apply bg-brand-50 text-brand-600 dark:bg-brand-500/[0.12] dark:text-brand-300;
 }
 
 @utility menu-dropdown-item-inactive {
-  @apply text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5;
+  @apply text-slate-600 hover:bg-brand-50 hover:text-brand-700 dark:text-gray-300 dark:hover:bg-white/5;
 }
 
 @utility menu-dropdown-badge {
@@ -503,7 +503,7 @@ span.flatpickr-weekday,
 .flatpickr-day.selected.startRange + .endRange:not(:nth-child(7n + 1)),
 .flatpickr-day.startRange.startRange + .endRange:not(:nth-child(7n + 1)),
 .flatpickr-day.endRange.startRange + .endRange:not(:nth-child(7n + 1)) {
-  box-shadow: -10px 0 0 #e60028;
+  box-shadow: -10px 0 0 #267fee;
 }
 
 .flatpickr-months .flatpickr-prev-month svg,
@@ -911,9 +911,9 @@ span.flatpickr-weekday,
   }
 }
 
-/* Leaktester Work Record global contrast and table header polish */
+/* SHMS-System global contrast and table header polish */
 :where(table thead, table thead tr, table thead th, table thead td) {
-  background-color: #e60028 !important;
+  background-color: #267fee !important;
   color: #ffffff !important;
 }
 
@@ -940,7 +940,7 @@ table thead td:last-child {
 }
 
 .leak-rounded-header-table thead th {
-  background-color: #e60028 !important;
+  background-color: #267fee !important;
 }
 
 .leak-rounded-header-table thead th:first-child {

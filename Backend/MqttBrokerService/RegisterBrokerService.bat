@@ -1,9 +1,9 @@
 @echo off
 SETLOCAL EnableExtensions EnableDelayedExpansion
 
-SET "SERVICE_NAME=LeakTestMqttBroker"
-SET "DISPLAY_NAME=Leak Test MQTT Broker"
-SET "SERVICE_DESCRIPTION=PT. Yanmar Leak Test MQTT Broker Service"
+SET "SERVICE_NAME=SHMSMqttBroker"
+SET "DISPLAY_NAME=SHMS MQTT Broker"
+SET "SERVICE_DESCRIPTION=PT. Baja Titian Utama SHMS MQTT Broker Service"
 SET "BAT_DIR=%~dp0"
 SET "APP_DIR=%BAT_DIR:~0,-1%"
 SET "PROJECT_FILE=%APP_DIR%\MqttBrokerService.csproj"

@@ -1,12 +1,12 @@
-name: leaktest-system
+name: shms-system
 
 services:
   api:
     build:
       context: ./Backend
       dockerfile: Web.API/Dockerfile
-    image: leaktest-system-api:latest
-    container_name: leaktest-api
+    image: shms-system-api:latest
+    container_name: shms-api
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -14,8 +14,8 @@ services:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__DefaultConnection: ${MYSQL_CONNECTION_STRING}
-      Jwt__Issuer: ${JWT_ISSUER:-LeaktesterWorkRecord}
-      Jwt__Audience: ${JWT_AUDIENCE:-LeaktesterWorkRecord.Frontend}
+      Jwt__Issuer: ${JWT_ISSUER:-SHMSSystem}
+      Jwt__Audience: ${JWT_AUDIENCE:-SHMSSystem.Frontend}
       Jwt__SigningKey: ${JWT_SIGNING_KEY}
       Jwt__ExpiresHours: ${JWT_EXPIRES_HOURS:-8}
       Swagger__Enabled: ${SWAGGER_ENABLED:-false}
@@ -24,7 +24,7 @@ services:
     ports:
       - "${API_HOST_PORT:-5274}:8080"
     networks:
-      - leaktest-net
+      - shms-net
 
   web:
     build:
@@ -33,8 +33,8 @@ services:
       args:
         NEXT_PUBLIC_API_BASE_URL: ""
         SERVER_API_BASE_URL: ${SERVER_API_BASE_URL:-http://api:8080}
-    image: leaktest-system-web:latest
-    container_name: leaktest-web
+    image: shms-system-web:latest
+    container_name: shms-web
     restart: unless-stopped
     depends_on:
       - api
@@ -44,40 +44,57 @@ services:
     ports:
       - "${FRONTEND_HOST_PORT:-8091}:3000"
     networks:
-      - leaktest-net
+      - shms-net
 
   worker:
     profiles:
       - worker
     build:
-      context: ./Backend/LeakTestWorker
+      context: ./Backend/Worker
       dockerfile: Dockerfile
-    image: leaktest-system-worker:latest
-    container_name: leaktest-worker
+    image: shms-system-worker:latest
+    container_name: shms-worker
     restart: unless-stopped
     depends_on:
       - api
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      MYSQL_CONNECTION_STRING: ${MYSQL_CONNECTION_STRING}
       MQTT_HOST: ${MQTT_HOST:-host.docker.internal}
       MQTT_PORT: ${MQTT_PORT:-1883}
-      MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-LeakTestWorker}
-      MQTT_TOPIC: ${MQTT_TOPIC:-/LeakTest}
-      MQTT_QOS: ${MQTT_QOS:-1}
+      MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-Worker}
+      MQTT_TOPIC: ${MQTT_TOPIC:-shms_mqtt}
+      MQTT_QOS: ${MQTT_QOS:-2}
       MQTT_USERNAME: ${MQTT_USERNAME:-}
       MQTT_PASSWORD: ${MQTT_PASSWORD:-}
       WORKER_INTERVAL_SECONDS: ${WORKER_INTERVAL_SECONDS:-1}
       WORKER_RECONNECT_DELAY_SECONDS: ${WORKER_RECONNECT_DELAY_SECONDS:-3}
+      WORKER_DOWNTIME_DATABASE_FALLBACK_MINUTES: ${WORKER_DOWNTIME_DATABASE_FALLBACK_MINUTES:-10}
+      MAIN_SERVER_UPLOAD_URL: ${MAIN_SERVER_UPLOAD_URL:-}
+      MAIN_SERVER_TIMEOUT_SECONDS: ${MAIN_SERVER_TIMEOUT_SECONDS:-5}
+      REDIS_CONNECTION_STRING: ${REDIS_CONNECTION_STRING:-redis:6379}
+      REDIS_BUFFER_KEY: ${REDIS_BUFFER_KEY:-shms:mqtt:buffer}
     volumes:
-      - leaktest-worker-buffer:/app/buffer
+      - ./Backend/Worker/Settings.ini:/app/Settings.ini:ro
+      - shms-worker-buffer:/app/buffer
     networks:
-      - leaktest-net
+      - shms-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: shms-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
+    volumes:
+      - shms-redis-data:/data
+    networks:
+      - shms-net
 
 networks:
-  leaktest-net:
+  shms-net:
     driver: bridge
 
 volumes:
-  leaktest-worker-buffer:
+  shms-worker-buffer:
+  shms-redis-data:

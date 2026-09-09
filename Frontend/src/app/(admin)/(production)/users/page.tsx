@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import UserTable from "@/components/user/UserTable";
 
-export const metadata: Metadata = { title: "User | PT. Yanmar Diesel Indonesia" };
+export const metadata: Metadata = { title: "User | PT. Baja Titian Utama" };
 
 export default function Page() {
   return (

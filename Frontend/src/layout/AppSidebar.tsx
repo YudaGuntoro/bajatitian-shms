@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import LeaktesterBrand from "@/components/brand/LeaktesterBrand";
+import SHMSBrand from "@/components/brand/SHMSBrand";
 import { useSidebar } from "../context/SidebarContext";
 import {
   ChevronDownIcon,
@@ -32,7 +32,7 @@ const AppSidebar: React.FC = () => {
   };
 
   const renderMenuItems = (navItems: NavItem[]) => (
-    <ul className="flex flex-col gap-4">
+    <ul className="flex flex-col gap-2">
       {navItems.map((nav) => (
         <li key={nav.name}>
           {nav.subItems ? (
@@ -119,7 +119,7 @@ const AppSidebar: React.FC = () => {
 
   return (
     <aside
-      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-5 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200 
+      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-4 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-[#dbe7f5] shadow-[8px_0_28px_rgba(21,84,179,0.04)]
         ${isExpanded || isMobileOpen
           ? "w-[290px]"
           : isHovered
@@ -132,15 +132,15 @@ const AppSidebar: React.FC = () => {
       onMouseLeave={() => setIsHovered(false)}
     >
       <div
-        className={`py-8 flex  ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
+        className={`py-7 flex  ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
           }`}
       >
         <Link href="/" className="sidebar-brand-link flex items-center gap-3">
           <span className="sidebar-brand-motion flex items-center gap-4">
             {isExpanded || isHovered || isMobileOpen ? (
-              <LeaktesterBrand compact />
+              <SHMSBrand compact />
             ) : (
-              <LeaktesterBrand compact showTitle={false} />
+              <SHMSBrand compact showTitle={false} />
             )}
           </span>
         </Link>
