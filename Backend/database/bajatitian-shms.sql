@@ -290,3 +290,5 @@ VALUES
     (1, 'Witon Server', NULL, 0, 0, 0)
 ON DUPLICATE KEY UPDATE
     server_name = VALUES(server_name);
+
+SOURCE Backend/database/bajatitian-shms_dummy_week.sql;
