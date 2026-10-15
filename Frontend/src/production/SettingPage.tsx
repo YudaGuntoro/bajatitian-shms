@@ -96,13 +96,20 @@ function StatusCard({ label, note, status }: { label: string; note: string; stat
   );
 }
 
-export default function SettingPage() {
+export type SettingsSection = "display" | "server" | "backup" | "alerts" | "system";
+
+const sectionTitles: Record<SettingsSection, string> = {
+  display: "Display", server: "Server & Upload", backup: "Backup", alerts: "Alerts", system: "System Information",
+};
+
+export default function SettingPage({ section = "display" }: { section?: SettingsSection }) {
   const toast = useToast();
   const [settings, setSettings] = useState<SystemSettings>(() => readSystemSettings());
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testingEndpoint, setTestingEndpoint] = useState(false);
   const [brokerStatus, setBrokerStatus] = useState<HealthState>("unknown");
+  const [brokerInfo, setBrokerInfo] = useState<{ host?: string; port?: number } | null>(null);
   const [backendStatus, setBackendStatus] = useState<HealthState>("unknown");
   const [lastMqttAt, setLastMqttAt] = useState<string | null>(null);
 
@@ -126,13 +133,16 @@ export default function SettingPage() {
 
       setBackendStatus(statusResult.status === "fulfilled" ? "online" : "offline");
       setLastMqttAt(statusResult.status === "fulfilled" ? statusResult.value.last_mqtt_at ?? null : null);
+      setBrokerInfo(brokerResult.status === "fulfilled" ? { host: brokerResult.value.host, port: brokerResult.value.port } : null);
       setBrokerStatus(brokerResult.status === "fulfilled" && brokerResult.value.online ? "online" : "offline");
     }
 
     void loadSystemInfo();
+    const timer = window.setInterval(() => void loadSystemInfo(), 5000);
 
     return () => {
       ignore = true;
+      window.clearInterval(timer);
     };
   }, []);
 
@@ -183,10 +193,11 @@ export default function SettingPage() {
       <div className="space-y-7">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-brand-600">System</p>
-          <h1 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">Setting</h1>
+          <h1 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">{sectionTitles[section]}</h1>
         </div>
 
         <form className="mx-4 space-y-6" onSubmit={submit}>
+          {section === "display" && (
           <SettingSection eyebrow="Display" title="Unit Display">
             <div className="grid gap-5 px-5 py-6 sm:grid-cols-2 xl:grid-cols-5">
               <label className={labelClass}>
@@ -215,7 +226,9 @@ export default function SettingPage() {
               </label>
             </div>
           </SettingSection>
+          )}
 
+          {section === "server" && (
           <SettingSection eyebrow="Server" title="Main API Endpoint">
             <div className="grid gap-5 px-5 py-6 lg:grid-cols-[minmax(0,1fr)_320px]">
               <label className={labelClass}>
@@ -223,7 +236,7 @@ export default function SettingPage() {
                 <input
                   className={inputClass}
                   onChange={(event) => patchSettings({ mainApiEndpoint: event.target.value })}
-                  placeholder="https://server-utama.domain/api/upload"
+                  placeholder="https://main-server.example.com/api/upload"
                   value={settings.mainApiEndpoint}
                 />
               </label>
@@ -248,7 +261,9 @@ export default function SettingPage() {
               </button>
             </div>
           </SettingSection>
+          )}
 
+          {section === "server" && (
           <SettingSection eyebrow="Upload" title="Upload Configuration">
             <div className="grid gap-5 px-5 py-6 sm:grid-cols-2 xl:grid-cols-5">
               <ToggleField checked={settings.uploadEnabled} label="Auto Upload" onChange={(checked) => patchSettings({ uploadEnabled: checked })} />
@@ -304,42 +319,27 @@ export default function SettingPage() {
               </label>
             </div>
           </SettingSection>
+          )}
 
-          <SettingSection eyebrow="Storage" title="Buffer & Storage">
-            <div className="grid gap-5 px-5 py-6 sm:grid-cols-2 xl:grid-cols-4">
-              <ToggleField checked={settings.autoCleanupEnabled} label="Auto Cleanup" onChange={(checked) => patchSettings({ autoCleanupEnabled: checked })} />
-              <label className={labelClass}>
-                Max Buffer Records
-                <input
-                  className={inputClass}
-                  min={100}
-                  onChange={(event) => patchSettings({ maxBufferRecords: numericValue(event.target.value, settings.maxBufferRecords) })}
-                  type="number"
-                  value={settings.maxBufferRecords}
-                />
-              </label>
-              <label className={labelClass}>
-                Log Retention
-                <input
-                  className={inputClass}
-                  min={1}
-                  onChange={(event) => patchSettings({ logRetentionDays: numericValue(event.target.value, settings.logRetentionDays) })}
-                  type="number"
-                  value={settings.logRetentionDays}
-                />
-              </label>
+          {section === "backup" && (
+          <SettingSection eyebrow="Storage" title="Backup Configuration">
+            <div className="grid gap-5 px-5 py-6 sm:grid-cols-2">
               <label className={labelClass}>
                 Backup Location
-                <input
-                  className={inputClass}
-                  onChange={(event) => patchSettings({ backupDbLocation: event.target.value })}
-                  placeholder="D:\\Backup\\SHMS-System"
-                  value={settings.backupDbLocation}
-                />
+                <input className={inputClass} onChange={(event) => patchSettings({ backupDbLocation: event.target.value })}
+                  placeholder="D:\\Backup\\SHMS-System" value={settings.backupDbLocation} />
+              </label>
+              <label className={labelClass}>
+                Backup Schedule
+                <select className={inputClass} value={settings.schedule} onChange={(event) => patchSettings({ schedule: event.target.value as SystemSettings["schedule"] })}>
+                  <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
+                </select>
               </label>
             </div>
           </SettingSection>
+          )}
 
+          {section === "alerts" && (
           <SettingSection eyebrow="Alert" title="Alert Threshold">
             <div className="grid gap-5 px-5 py-6 sm:grid-cols-2 xl:grid-cols-4">
               <label className={labelClass}>
@@ -384,17 +384,20 @@ export default function SettingPage() {
               </label>
             </div>
           </SettingSection>
+          )}
 
+          {section === "system" && (
           <SettingSection eyebrow="Runtime" title="System Info">
             <div className="grid gap-4 px-5 py-6 sm:grid-cols-2 xl:grid-cols-4">
               <StatusCard label="Backend API" note="Local middleware API" status={backendStatus} />
-              <StatusCard label="MQTT Broker" note="Broker connection" status={brokerStatus} />
+              <StatusCard label="MQTT Broker" note={brokerInfo?.host ? `${brokerInfo.host}:${brokerInfo.port ?? 1883}` : "Broker connection"} status={brokerStatus} />
               <StatusCard label="Last MQTT Received" note={lastMqttAt ? new Date(lastMqttAt).toLocaleString() : "No data"} status={lastMqttAt ? "online" : "unknown"} />
               <StatusCard label="App Version" note="v1.3.0" status="online" />
             </div>
           </SettingSection>
+          )}
 
-          <div className="flex justify-end">
+          {section !== "system" && <div className="flex justify-end">
             <button
               className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-brand-500 px-5 text-sm font-bold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={saving}
@@ -403,7 +406,7 @@ export default function SettingPage() {
               <CheckLineIcon className="size-4" />
               {saving ? "Saving" : "Save Setting"}
             </button>
-          </div>
+          </div>}
         </form>
       </div>
 

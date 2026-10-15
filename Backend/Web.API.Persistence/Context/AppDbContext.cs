@@ -49,8 +49,9 @@ public class AppDbContext : DbContext
             entity.Property(x => x.CreatedAt).HasColumnName("created_at");
             entity.HasIndex(x => x.TimeStamp).HasDatabaseName("ix_log_buffer_time_stamp");
             entity.HasIndex(x => new { x.Status, x.TimeStamp }).HasDatabaseName("ix_log_buffer_status_time_stamp");
+            entity.HasIndex(x => new { x.Status, x.UploadedAt }).HasDatabaseName("ix_log_buffer_uploaded_retention");
             entity.HasIndex(x => new { x.DeviceId, x.TimeStamp }).HasDatabaseName("ix_log_buffer_device_time_stamp");
-            entity.HasIndex(x => x.SensorDeviceId).HasDatabaseName("ix_log_buffer_sensor_device_id");
+            entity.HasIndex(x => new { x.SensorDeviceId, x.TimeStamp }).HasDatabaseName("ix_log_buffer_sensor_device_time_stamp");
             entity.HasOne<SensorDevice>().WithMany().HasForeignKey(x => x.SensorDeviceId).OnDelete(DeleteBehavior.SetNull);
         });
 
@@ -267,6 +268,8 @@ public class AppDbContext : DbContext
             entity.Property(x => x.QualityCode).HasColumnName("quality_code").HasMaxLength(30).IsRequired();
             entity.Property(x => x.RawPayload).HasColumnName("raw_payload").HasColumnType("json");
             entity.Property(x => x.IngestedAt).HasColumnName("ingested_at");
+            entity.Property(x => x.UploadedAt).HasColumnName("uploaded_at");
+            entity.HasIndex(x => new { x.IngestedAt, x.Id, x.UploadedAt }).HasDatabaseName("ix_sensor_readings_retention");
             entity.HasIndex(x => new { x.SensorChannelId, x.MeasuredAt }).IsUnique().HasDatabaseName("uq_sensor_readings_channel_measured_at");
             entity.HasIndex(x => x.MeasuredAt).HasDatabaseName("ix_sensor_readings_measured_at");
             entity.HasIndex(x => x.QualityCode).HasDatabaseName("ix_sensor_readings_quality_code");
@@ -358,15 +361,10 @@ public class AppDbContext : DbContext
             entity.ToTable("system_settings");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Id).HasColumnName("id");
-            entity.Property(x => x.PressureUnitId).HasColumnName("pressure_unit_id");
-            entity.Property(x => x.CycleTimeUnitId).HasColumnName("cycle_time_unit_id");
             entity.Property(x => x.BackupDbLocation).HasColumnName("backup_db_location").HasMaxLength(500);
             entity.Property(x => x.BackupSchedule).HasColumnName("backup_schedule").HasMaxLength(20).IsRequired();
-            entity.Property(x => x.PlcIpAddress).HasColumnName("plc_ip_address").HasMaxLength(80);
             entity.Property(x => x.CreatedAt).HasColumnName("created_at");
             entity.Property(x => x.UpdatedAt).HasColumnName("updated_at");
-            entity.HasOne(x => x.PressureUnit).WithMany().HasForeignKey(x => x.PressureUnitId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(x => x.CycleTimeUnit).WithMany().HasForeignKey(x => x.CycleTimeUnitId).OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

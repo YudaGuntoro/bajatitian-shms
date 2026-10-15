@@ -69,7 +69,14 @@ export const navItems: NavItem[] = [
   },
   {
     icon: <SettingsIcon />,
-    name: "Setting",
-    path: "/settings",
+    name: "Settings",
+    subItems: [
+      { name: "Display", path: "/settings/display" },
+      { name: "Server & Upload", path: "/settings/server" },
+      { name: "Data Storage", path: "/settings/storage" },
+      { name: "Backup", path: "/settings/backup" },
+      { name: "Alerts", path: "/settings/alerts" },
+      { name: "System Information", path: "/settings/system" },
+    ],
   },
 ];

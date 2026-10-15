@@ -121,7 +121,7 @@ public sealed class MqttMessageRouter : IMqttMessageHandler
     {
         _outageStartedAt = null;
         await _logWriterService.WriteRawAsync(topic, payload, "uploaded", cancellationToken: cancellationToken);
-        await PersistSensorReadingIfValidAsync(topic, payload, cancellationToken);
+        await PersistSensorReadingIfValidAsync(topic, payload, cancellationToken, uploaded: true);
         await _syncStatusWriter.MarkSuccessAsync(_mainServerUploader.UploadUrl, await SafeRedisCountAsync(cancellationToken), cancellationToken);
     }
 
@@ -172,7 +172,7 @@ public sealed class MqttMessageRouter : IMqttMessageHandler
         await PersistSensorReadingIfValidAsync(topic, payload, cancellationToken);
     }
 
-    private async Task PersistSensorReadingIfValidAsync(string topic, string payload, CancellationToken cancellationToken)
+    private async Task PersistSensorReadingIfValidAsync(string topic, string payload, CancellationToken cancellationToken, bool uploaded = false)
     {
         if (!_sensorHandler.CanHandle(topic))
         {
@@ -181,7 +181,7 @@ public sealed class MqttMessageRouter : IMqttMessageHandler
 
         try
         {
-            await _sensorHandler.InsertAsync(topic, payload, cancellationToken);
+            await _sensorHandler.InsertAsync(topic, payload, cancellationToken, uploaded);
         }
         catch (Exception ex) when (ex is FormatException or JsonException)
         {

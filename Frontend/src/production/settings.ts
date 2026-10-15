@@ -2,14 +2,9 @@ import { apiGet, apiRequest } from "@/lib/api";
 
 export type BackupSchedule = "daily" | "weekly" | "monthly";
 
-export type UnitSettings = {
-  pressureUnit: string;
-  cycleTimeUnit: string;
-};
-
 export type TimezoneOption = "Asia/Jakarta" | "Asia/Bangkok" | "UTC";
 
-export type SystemSettings = UnitSettings & {
+export type SystemSettings = {
   accUnit: string;
   atrhUnit: string;
   autoCleanupEnabled: boolean;
@@ -21,7 +16,6 @@ export type SystemSettings = UnitSettings & {
   mainApiToken: string;
   maxBufferRecords: number;
   maxRetry: number;
-  plcIpAddress: string;
   retryDelaySeconds: number;
   schedule: BackupSchedule;
   sensorOfflineSeconds: number;
@@ -43,15 +37,12 @@ export const defaultSystemSettings: SystemSettings = {
   autoCleanupEnabled: true,
   backupDbLocation: "",
   bufferWarningLimit: 1000,
-  cycleTimeUnit: "s",
   endpointDownWarningSeconds: 300,
   logRetentionDays: 30,
   mainApiEndpoint: "",
   mainApiToken: "",
   maxBufferRecords: 50000,
   maxRetry: 5,
-  plcIpAddress: "",
-  pressureUnit: "MPa",
   retryDelaySeconds: 30,
   schedule: "daily",
   sensorOfflineSeconds: 60,
@@ -66,20 +57,14 @@ export const defaultSystemSettings: SystemSettings = {
 };
 
 type ApiSystemSettings = {
-  pressure_unit: string;
-  cycle_time_unit: string;
   backup_db_location: string;
   backup_schedule: BackupSchedule;
-  plc_ip_address?: string | null;
 };
 
 function fromApiSettings(settings: ApiSystemSettings, fallback: SystemSettings = defaultSystemSettings): SystemSettings {
   return {
     ...fallback,
     backupDbLocation: settings.backup_db_location ?? "",
-    cycleTimeUnit: settings.cycle_time_unit ?? fallback.cycleTimeUnit,
-    plcIpAddress: settings.plc_ip_address ?? "",
-    pressureUnit: settings.pressure_unit ?? fallback.pressureUnit,
     schedule: settings.backup_schedule ?? fallback.schedule,
   };
 }
@@ -88,9 +73,6 @@ function toApiSettings(settings: SystemSettings) {
   return {
     backup_db_location: settings.backupDbLocation,
     backup_schedule: settings.schedule,
-    cycle_time_unit: settings.cycleTimeUnit,
-    plc_ip_address: settings.plcIpAddress,
-    pressure_unit: settings.pressureUnit,
   };
 }
 
@@ -101,7 +83,11 @@ export function readSystemSettings(): SystemSettings {
 
   try {
     const stored = window.localStorage.getItem(SYSTEM_SETTINGS_STORAGE_KEY);
-    return stored ? { ...defaultSystemSettings, ...JSON.parse(stored) } : defaultSystemSettings;
+    const values = stored ? JSON.parse(stored) : {};
+    // Only keep current settings when reading browser data saved by an older version.
+    const current = Object.fromEntries(Object.entries(values).filter(([key]) =>
+      Object.prototype.hasOwnProperty.call(defaultSystemSettings, key)));
+    return { ...defaultSystemSettings, ...current };
   } catch {
     return defaultSystemSettings;
   }
@@ -124,39 +110,14 @@ export async function fetchSystemSettings() {
 }
 
 export async function updateSystemSettings(settings: SystemSettings) {
-  saveSystemSettings(settings);
-
-  try {
-    const updated = fromApiSettings(await apiRequest<ApiSystemSettings>("/api/shms-system/settings", {
-      body: JSON.stringify(toApiSettings(settings)),
-      method: "PUT",
-    }), settings);
-    saveSystemSettings(updated);
-    return updated;
-  } catch {
-    return settings;
-  }
-}
-
-export function getUnitSettings(): UnitSettings {
-  const settings = readSystemSettings();
-  return {
-    cycleTimeUnit: settings.cycleTimeUnit,
-    pressureUnit: settings.pressureUnit,
-  };
+  const updated = fromApiSettings(await apiRequest<ApiSystemSettings>("/api/shms-system/settings", {
+    body: JSON.stringify(toApiSettings(settings)),
+    method: "PUT",
+  }), settings);
+  saveSystemSettings(updated);
+  return updated;
 }
 
 export function displayNumber(value: number, fractionDigits = 2) {
   return Number(value).toFixed(fractionDigits);
-}
-
-export function displayUnitlessText(value?: string | null) {
-  if (!value || !value.trim()) {
-    return "-";
-  }
-
-  return value
-    .replace(/\s*\b(MPa|kPa|Pa|bar|psi)\b/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
 }

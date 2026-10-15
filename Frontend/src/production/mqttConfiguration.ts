@@ -1,9 +1,10 @@
 import { apiGet, apiRequest } from "@/lib/api";
 
 export type MqttSensorCode = "TILT" | "VW" | "ATRH" | "ACC";
+export type MqttSensorTypeCode = MqttSensorCode;
 
 export type MqttSensorTopic = {
-  code: MqttSensorCode;
+  code: string;
   name: string;
   topic: string;
   qos: "0" | "1" | "2";
@@ -20,7 +21,7 @@ export type MqttConfiguration = {
 export const MQTT_CONFIGURATION_STORAGE_KEY = "shms-mqtt-configuration";
 
 type ApiMqttSensorTopic = {
-  code: MqttSensorCode;
+  code: string;
   name: string;
   topic: string;
   qos: number | string;
@@ -38,13 +39,30 @@ export const defaultMqttConfiguration: MqttConfiguration = {
   brokerHost: "localhost",
   brokerPort: "1883",
   clientId: "SHMSClient",
-  topics: [
-    { code: "TILT", enabled: true, name: "Tilt Sensor", qos: "1", topic: "shms/tilt" },
-    { code: "VW", enabled: true, name: "Vibrating Wire Sensor", qos: "1", topic: "shms/vw" },
-    { code: "ATRH", enabled: true, name: "Air Temperature & RH Sensor", qos: "1", topic: "shms/atrh" },
-    { code: "ACC", enabled: true, name: "Accelerometer Sensor", qos: "1", topic: "shms/acc" },
-  ],
+  topics: buildDefaultTopics(),
 };
+
+function buildDefaultTopics(): MqttSensorTopic[] {
+  const sensors = [
+    { code: "TILT", name: "Tilt Sensor", slug: "tilt" },
+    { code: "VW", name: "Vibrating Wire Sensor", slug: "vw" },
+    { code: "ATRH", name: "Air Temperature & RH Sensor", slug: "atrh" },
+    { code: "ACC", name: "Accelerometer Sensor", slug: "acc" },
+  ];
+
+  return sensors.flatMap((sensor) =>
+    Array.from({ length: 9 }, (_, index) => {
+      const slot = String(index + 1).padStart(2, "0");
+      return {
+        code: `${sensor.code}${slot}`,
+        enabled: true,
+        name: `${sensor.name} ${slot}`,
+        qos: "1" as const,
+        topic: `adit/rnd/test123/${sensor.slug}${slot}`,
+      };
+    })
+  );
+}
 
 function normalizeConfiguration(value: Partial<MqttConfiguration> | null): MqttConfiguration {
   const configuredTopics = Array.isArray(value?.topics) ? value.topics : [];
@@ -55,7 +73,7 @@ function normalizeConfiguration(value: Partial<MqttConfiguration> | null): MqttC
     clientId: value?.clientId ?? defaultMqttConfiguration.clientId,
     topics: defaultMqttConfiguration.topics.map((topic) => ({
       ...topic,
-      ...configuredTopics.find((item) => item.code === topic.code),
+      ...configuredTopics.find((item) => item.code.toUpperCase() === topic.code),
     })),
   };
 }

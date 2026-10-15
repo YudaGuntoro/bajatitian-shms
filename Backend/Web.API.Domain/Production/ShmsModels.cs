@@ -31,68 +31,35 @@ public class SystemSetting
     [JsonPropertyName("id")]
     public int Id { get; set; }
 
-    [JsonPropertyName("pressure_unit_id")]
-    public int PressureUnitId { get; set; }
-
-    [JsonPropertyName("cycle_time_unit_id")]
-    public int CycleTimeUnitId { get; set; }
-
     [JsonPropertyName("backup_db_location")]
     public string? BackupDbLocation { get; set; }
 
     [JsonPropertyName("backup_schedule")]
     public string BackupSchedule { get; set; } = "daily";
-
-    [JsonPropertyName("plc_ip_address")]
-    public string? PlcIpAddress { get; set; }
 
     [JsonPropertyName("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 
     [JsonPropertyName("updated_at")]
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
-
-    [JsonIgnore]
-    public MeasurementUnit? PressureUnit { get; set; }
-
-    [JsonIgnore]
-    public MeasurementUnit? CycleTimeUnit { get; set; }
 }
 
 public class SystemSettingsResponse
 {
-    [JsonPropertyName("pressure_unit")]
-    public string PressureUnit { get; set; } = "MPa";
-
-    [JsonPropertyName("cycle_time_unit")]
-    public string CycleTimeUnit { get; set; } = "s";
-
     [JsonPropertyName("backup_db_location")]
     public string BackupDbLocation { get; set; } = string.Empty;
 
     [JsonPropertyName("backup_schedule")]
     public string BackupSchedule { get; set; } = "daily";
-
-    [JsonPropertyName("plc_ip_address")]
-    public string PlcIpAddress { get; set; } = string.Empty;
 }
 
 public class UpdateSystemSettingsRequest
 {
-    [JsonPropertyName("pressure_unit")]
-    public string PressureUnit { get; set; } = "MPa";
-
-    [JsonPropertyName("cycle_time_unit")]
-    public string CycleTimeUnit { get; set; } = "s";
-
     [JsonPropertyName("backup_db_location")]
     public string? BackupDbLocation { get; set; }
 
     [JsonPropertyName("backup_schedule")]
     public string BackupSchedule { get; set; } = "daily";
-
-    [JsonPropertyName("plc_ip_address")]
-    public string? PlcIpAddress { get; set; }
 }
 
 public class MqttSensorTopicConfig
@@ -229,6 +196,7 @@ public class SensorReading
     public string QualityCode { get; set; } = "good";
     public string? RawPayload { get; set; }
     public DateTime IngestedAt { get; set; } = DateTime.Now;
+    public DateTime? UploadedAt { get; set; }
 }
 
 public class MqttBrokerConfig
@@ -290,6 +258,57 @@ public class ServerSyncStatus
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
 }
 
+public class MainServerStatusResponse
+{
+    [JsonPropertyName("configured")]
+    public bool Configured { get; set; }
+
+    [JsonPropertyName("server_name")]
+    public string ServerName { get; set; } = "Witon Server";
+
+    [JsonPropertyName("endpoint_url")]
+    public string? EndpointUrl { get; set; }
+
+    [JsonPropertyName("online")]
+    public bool Online { get; set; }
+
+    [JsonPropertyName("outage_started_at")]
+    public DateTime? OutageStartedAt { get; set; }
+
+    [JsonPropertyName("downtime_seconds")]
+    public int DowntimeSeconds { get; set; }
+
+    [JsonPropertyName("last_success_at")]
+    public DateTime? LastSuccessAt { get; set; }
+
+    [JsonPropertyName("last_failure_at")]
+    public DateTime? LastFailureAt { get; set; }
+
+    [JsonPropertyName("last_error")]
+    public string? LastError { get; set; }
+
+    [JsonPropertyName("redis_buffer_count")]
+    public long RedisBufferCount { get; set; }
+
+    [JsonPropertyName("db_spillover_count")]
+    public long DbSpilloverCount { get; set; }
+}
+
+public class ShmsSystemStatusResponse
+{
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "online";
+
+    [JsonPropertyName("checked_at")]
+    public DateTime CheckedAt { get; set; } = DateTime.Now;
+
+    [JsonPropertyName("last_mqtt_at")]
+    public DateTime? LastMqttAt { get; set; }
+
+    [JsonPropertyName("main_server")]
+    public MainServerStatusResponse MainServer { get; set; } = new();
+}
+
 public class MqttConfigurationResponse
 {
     [JsonPropertyName("broker_host")]
@@ -300,6 +319,12 @@ public class MqttConfigurationResponse
 
     [JsonPropertyName("client_id")]
     public string ClientId { get; set; } = "SHMSClient";
+
+    [JsonPropertyName("username")]
+    public string? Username { get; set; }
+
+    [JsonPropertyName("use_tls")]
+    public bool UseTls { get; set; }
 
     [JsonPropertyName("topics")]
     public List<MqttSensorTopicConfig> Topics { get; set; } = [];
@@ -315,6 +340,12 @@ public class UpdateMqttConfigurationRequest
 
     [JsonPropertyName("client_id")]
     public string? ClientId { get; set; }
+
+    [JsonPropertyName("username")]
+    public string? Username { get; set; }
+
+    [JsonPropertyName("use_tls")]
+    public bool? UseTls { get; set; }
 
     [JsonPropertyName("topics")]
     public List<MqttSensorTopicConfig> Topics { get; set; } = [];

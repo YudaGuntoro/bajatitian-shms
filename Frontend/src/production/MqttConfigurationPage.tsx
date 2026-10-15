@@ -11,7 +11,7 @@ import {
   saveMqttConfiguration,
   updateMqttConfiguration,
   type MqttConfiguration,
-  type MqttSensorCode,
+  type MqttSensorTypeCode,
   type MqttSensorTopic,
 } from "./mqttConfiguration";
 
@@ -19,12 +19,21 @@ const inputClass = "mt-2 h-12 w-full rounded-lg border border-slate-300 bg-white
 const tableInputClass = "h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand-400 focus:ring-3 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500";
 const labelClass = "text-xs font-bold uppercase text-slate-600 dark:text-slate-300";
 
-const sensorDescriptions: Record<MqttSensorCode, string> = {
+const sensorDescriptions: Record<MqttSensorTypeCode, string> = {
   ACC: "Getaran dan akselerasi struktur.",
   ATRH: "Air temperature dan relative humidity.",
   TILT: "Kemiringan struktur dari tilt sensor.",
   VW: "Pembacaan vibrating wire sensor.",
 };
+
+const sensorGroups: MqttSensorTypeCode[] = ["TILT", "VW", "ATRH", "ACC"];
+
+function getSensorType(code: string): MqttSensorTypeCode {
+  if (code.startsWith("TILT")) return "TILT";
+  if (code.startsWith("ATRH")) return "ATRH";
+  if (code.startsWith("ACC")) return "ACC";
+  return "VW";
+}
 
 export default function MqttConfigurationPage() {
   const toast = useToast();
@@ -32,7 +41,19 @@ export default function MqttConfigurationPage() {
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [activeGroup, setActiveGroup] = useState<MqttSensorTypeCode>("TILT");
   const activeTopicCount = useMemo(() => configuration.topics.filter((topic) => topic.enabled).length, [configuration.topics]);
+  const groupedTopics = useMemo(() => {
+    return sensorGroups.map((group) => {
+      const topics = configuration.topics.filter((topic) => getSensorType(topic.code) === group);
+      return {
+        activeCount: topics.filter((topic) => topic.enabled).length,
+        group,
+        topics,
+      };
+    });
+  }, [configuration.topics]);
+  const visibleTopics = groupedTopics.find((item) => item.group === activeGroup)?.topics ?? [];
 
   useEffect(() => {
     let ignore = false;
@@ -63,7 +84,7 @@ export default function MqttConfigurationPage() {
     setConfiguration((current) => ({ ...current, ...patch }));
   }
 
-  function updateTopic(code: MqttSensorCode, patch: Partial<MqttSensorTopic>) {
+  function updateTopic(code: string, patch: Partial<MqttSensorTopic>) {
     setConfiguration((current) => ({
       ...current,
       topics: current.topics.map((topic) => (topic.code === code ? { ...topic, ...patch } : topic)),
@@ -141,7 +162,7 @@ export default function MqttConfigurationPage() {
                 </p>
               </div>
               <div className="inline-flex w-fit items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-black uppercase text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                1 sensor = 1 topic
+                1 slot = 1 topic
               </div>
             </div>
           </div>
@@ -180,36 +201,66 @@ export default function MqttConfigurationPage() {
           </div>
 
           <div className="border-y border-slate-200 px-5 py-5 dark:border-slate-800">
-            <h2 className="text-base font-bold text-slate-900 dark:text-white">Sensor Topics</h2>
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 dark:text-white">Sensor Topics</h2>
+                <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">
+                  Pilih jenis sensor untuk setup 9 slot topic.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                {groupedTopics.map((item) => (
+                  <button
+                    className={
+                      activeGroup === item.group
+                        ? "h-10 rounded-lg bg-brand-500 px-4 text-sm font-black text-white shadow-sm"
+                        : "h-10 rounded-lg border border-slate-200 bg-white px-4 text-sm font-black text-slate-600 transition hover:border-brand-300 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+                    }
+                    key={item.group}
+                    onClick={() => setActiveGroup(item.group)}
+                    type="button"
+                  >
+                    {item.group} {item.activeCount}/{item.topics.length}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
-          <div className="overflow-x-auto p-5">
-            <table className="leak-rounded-header-table w-full min-w-[900px] border-separate border-spacing-0 text-left text-sm">
+          <div className="p-5">
+            <div className="mb-4 rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-black text-slate-900 dark:text-white">{activeGroup} Slots</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">{sensorDescriptions[activeGroup]}</p>
+                </div>
+                <p className="text-xs font-black uppercase text-slate-400">{visibleTopics.length} slot</p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+            <table className="leak-rounded-header-table w-full min-w-[760px] border-separate border-spacing-0 text-left text-sm">
               <thead className="bg-transparent text-xs uppercase text-white">
                 <tr>
-                  <th className="w-28 rounded-l-lg bg-brand-500 px-5 py-3">Sensor</th>
-                  <th className="bg-brand-500 px-4 py-3">Description</th>
+                  <th className="w-28 rounded-l-lg bg-brand-500 px-5 py-3">Slot</th>
                   <th className="bg-brand-500 px-4 py-3">MQTT Topic</th>
                   <th className="w-28 bg-brand-500 px-4 py-3">QoS</th>
                   <th className="w-32 rounded-r-lg bg-brand-500 px-5 py-3 text-center">Active</th>
                 </tr>
               </thead>
               <tbody>
-                {configuration.topics.map((sensor) => (
+                {visibleTopics.map((sensor) => (
                   <tr key={sensor.code}>
                     <td className="border-b border-slate-100 px-3 py-4 dark:border-slate-800">
                       <div className="text-base font-black text-slate-900 dark:text-white">{sensor.code}</div>
                       <div className="mt-1 text-xs font-bold text-slate-500 dark:text-slate-400">{sensor.name}</div>
-                    </td>
-                    <td className="border-b border-slate-100 px-3 py-4 text-sm font-semibold text-slate-600 dark:border-slate-800 dark:text-slate-300">
-                      {sensorDescriptions[sensor.code]}
                     </td>
                     <td className="border-b border-slate-100 px-3 py-4 dark:border-slate-800">
                       <input
                         className={tableInputClass}
                         disabled={!sensor.enabled}
                         onChange={(event) => updateTopic(sensor.code, { topic: event.target.value })}
-                        placeholder={`shms/${sensor.code.toLowerCase()}`}
+                        placeholder={`adit/rnd/test123/${sensor.code.toLowerCase()}`}
                         value={sensor.topic}
                       />
                     </td>
@@ -244,6 +295,7 @@ export default function MqttConfigurationPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
 
           <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:bg-slate-900">

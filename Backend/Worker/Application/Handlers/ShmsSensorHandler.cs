@@ -20,21 +20,32 @@ public sealed class ShmsSensorHandler : IShmsSensorHandler
     }
 
     public bool CanHandle(string topic) =>
-        !string.IsNullOrWhiteSpace(topic) && topic.Contains("shms", StringComparison.OrdinalIgnoreCase);
+        !string.IsNullOrWhiteSpace(topic) &&
+        (
+            topic.Contains("shms", StringComparison.OrdinalIgnoreCase) ||
+            topic.Contains("tilt", StringComparison.OrdinalIgnoreCase) ||
+            topic.Contains("acc", StringComparison.OrdinalIgnoreCase) ||
+            topic.Contains("vw", StringComparison.OrdinalIgnoreCase) ||
+            topic.Contains("atrh", StringComparison.OrdinalIgnoreCase)
+        );
 
-    public async Task InsertAsync(string topic, string payload, CancellationToken cancellationToken = default)
+    public async Task InsertAsync(string topic, string payload, CancellationToken cancellationToken = default, bool uploaded = false)
     {
         try
         {
-            var reading = ShmsPayloadMapper.ToSensorReading(topic, payload);
-            var insertedId = await _readingWriterService.InsertAsync(reading, cancellationToken);
-            _logger.LogInformation(
-                "[SHMS] Inserted reading Id={Id} Device={Device} Channel={Channel} Value={Value} Topic={Topic}",
-                insertedId,
-                reading.DeviceCode,
-                reading.ChannelCode,
-                reading.NumericValue,
-                topic);
+            var readings = ShmsPayloadMapper.ToSensorReadings(topic, payload);
+            var insertedIds = await _readingWriterService.InsertBatchAsync(readings, cancellationToken, uploaded);
+            for (var index = 0; index < readings.Count; index++)
+            {
+                var reading = readings[index];
+                _logger.LogInformation(
+                    "[SHMS] Inserted reading Id={Id} Device={Device} Channel={Channel} Value={Value} Topic={Topic}",
+                    insertedIds[index],
+                    reading.DeviceCode,
+                    reading.ChannelCode,
+                    reading.NumericValue,
+                    topic);
+            }
         }
         catch (JsonException ex)
         {

@@ -4,5 +4,5 @@ public interface IShmsSensorHandler
 {
     bool CanHandle(string topic);
 
-    Task InsertAsync(string topic, string payload, CancellationToken cancellationToken = default);
+    Task InsertAsync(string topic, string payload, CancellationToken cancellationToken = default, bool uploaded = false);
 }

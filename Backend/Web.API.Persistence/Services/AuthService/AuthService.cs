@@ -1,23 +1,22 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Web.API.Domain.Auth;
-using Web.API.Persistence.Context;
+using Web.API.Persistence.Repositories.Auth;
 using Web.API.Persistence.Services.Shared;
 
 namespace Web.API.Persistence.Services.AuthService;
 
 public class AuthService : IAuthService
 {
-    private readonly AppDbContext _db;
+    private readonly IUserRepository _users;
     private readonly JwtSettings _jwtSettings;
 
-    public AuthService(AppDbContext db, IOptions<JwtSettings> jwtOptions)
+    public AuthService(IUserRepository users, IOptions<JwtSettings> jwtOptions)
     {
-        _db = db;
+        _users = users;
         _jwtSettings = jwtOptions.Value;
     }
 
@@ -29,9 +28,7 @@ public class AuthService : IAuthService
         }
 
         var username = request.Username.Trim();
-        var user = await _db.Users
-            .Include(x => x.Role)
-            .FirstOrDefaultAsync(x => x.Username == username);
+        var user = await _users.GetByUsernameWithRoleAsync(username, asTracking: true);
         if (user == null || !AuthPasswordHasher.VerifyPassword(request.Password, user.PasswordSalt, user.PasswordHash))
         {
             throw new UnauthorizedAccessException("Invalid username or password.");
@@ -51,14 +48,14 @@ public class AuthService : IAuthService
         var expiresAt = loginAt.AddHours(_jwtSettings.ExpiresHours);
         user.LastLoginAt = loginAt;
         user.UpdatedAt = loginAt;
-        await _db.SaveChangesAsync();
+        await _users.SaveChangesAsync();
 
         return new LoginResponse
         {
             AccessToken = CreateJwt(user, loginAt, expiresAt),
             TokenType = "Bearer",
             ExpiresAt = expiresAt,
-            User = ToResponse(user)
+            User = UserManagementService.ToResponse(user)
         };
     }
 
@@ -96,24 +93,6 @@ public class AuthService : IAuthService
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
-    }
-
-    private static UserResponse ToResponse(AppUser user)
-    {
-        return new UserResponse
-        {
-            Id = user.Id,
-            Username = user.Username,
-            FullName = user.FullName,
-            Email = user.Email,
-            Phone = user.Phone,
-            RolesId = user.RolesId,
-            Role = GetRoleName(user),
-            IsActive = user.IsActive,
-            LastLoginAt = user.LastLoginAt,
-            CreatedAt = user.CreatedAt,
-            UpdatedAt = user.UpdatedAt
-        };
     }
 
     private static string GetRoleName(AppUser user) =>

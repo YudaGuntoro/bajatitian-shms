@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Web.API.Domain\Web.API.Domain.csproj" />
+    <ProjectReference Include="../SHMS.Storage/SHMS.Storage.csproj" />
   </ItemGroup>
 
 </Project>

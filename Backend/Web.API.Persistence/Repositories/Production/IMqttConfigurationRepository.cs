@@ -6,7 +6,11 @@ public interface IMqttConfigurationRepository
 {
     Task EnsureTableAsync(CancellationToken cancellationToken = default);
 
+    Task<MqttBrokerConfig?> GetActiveBrokerConfigAsync(CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<MqttSensorTopicConfig>> GetTopicsAsync(CancellationToken cancellationToken = default);
+
+    Task UpsertBrokerConfigAsync(MqttBrokerConfig brokerConfig, CancellationToken cancellationToken = default);
 
     Task UpsertTopicsAsync(
         IReadOnlyCollection<MqttSensorTopicConfig> topics,

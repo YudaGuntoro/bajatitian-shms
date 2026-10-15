@@ -54,19 +54,10 @@ CREATE TABLE IF NOT EXISTS measurement_units (
 
 CREATE TABLE IF NOT EXISTS system_settings (
     id INT PRIMARY KEY,
-    pressure_unit_id INT NOT NULL,
-    cycle_time_unit_id INT NOT NULL,
     backup_db_location VARCHAR(500) NULL,
     backup_schedule VARCHAR(20) NOT NULL DEFAULT 'daily',
-    plc_ip_address VARCHAR(80) NULL,
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-    CONSTRAINT fk_system_settings_pressure_unit FOREIGN KEY (pressure_unit_id) REFERENCES measurement_units (id)
-        ON UPDATE CASCADE
-        ON DELETE RESTRICT,
-    CONSTRAINT fk_system_settings_cycle_time_unit FOREIGN KEY (cycle_time_unit_id) REFERENCES measurement_units (id)
-        ON UPDATE CASCADE
-        ON DELETE RESTRICT,
     CONSTRAINT ck_system_settings_backup_schedule CHECK (backup_schedule IN ('manual', 'hourly', 'daily', 'weekly', 'monthly'))
 ) ENGINE=InnoDB;
 
@@ -258,8 +249,10 @@ CREATE TABLE IF NOT EXISTS sensor_readings (
     quality_code VARCHAR(30) NOT NULL DEFAULT 'good',
     raw_payload JSON NULL,
     ingested_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    uploaded_at DATETIME(6) NULL,
     UNIQUE KEY uq_sensor_readings_channel_measured_at (sensor_channel_id, measured_at),
     KEY ix_sensor_readings_measured_at (measured_at),
+    KEY ix_sensor_readings_retention (ingested_at, id, uploaded_at),
     KEY ix_sensor_readings_quality_code (quality_code),
     CONSTRAINT fk_sensor_readings_channel FOREIGN KEY (sensor_channel_id) REFERENCES sensor_channels (id)
         ON UPDATE CASCADE
@@ -281,8 +274,9 @@ CREATE TABLE IF NOT EXISTS log_buffer (
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     KEY ix_log_buffer_time_stamp (time_stamp),
     KEY ix_log_buffer_status_time_stamp (status, time_stamp),
+    KEY ix_log_buffer_uploaded_retention (status, uploaded_at),
     KEY ix_log_buffer_device_time_stamp (device_id, time_stamp),
-    KEY ix_log_buffer_sensor_device_id (sensor_device_id),
+    KEY ix_log_buffer_sensor_device_time_stamp (sensor_device_id, time_stamp),
     CONSTRAINT fk_log_buffer_sensor_device FOREIGN KEY (sensor_device_id) REFERENCES sensor_devices (id)
         ON UPDATE CASCADE
         ON DELETE SET NULL,
@@ -357,3 +351,31 @@ CREATE TABLE IF NOT EXISTS server_sync_status (
     CONSTRAINT ck_server_sync_status_redis_count CHECK (redis_buffer_count >= 0),
     CONSTRAINT ck_server_sync_status_spillover_count CHECK (db_spillover_count >= 0)
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS data_retention_settings (
+    id INT PRIMARY KEY,
+    enabled TINYINT(1) NOT NULL DEFAULT 0,
+    reading_retention_days INT NOT NULL DEFAULT 30,
+    uploaded_log_retention_days INT NOT NULL DEFAULT 7,
+    cleanup_interval_minutes INT NOT NULL DEFAULT 60,
+    max_reading_records BIGINT NULL,
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    CONSTRAINT ck_retention_days CHECK (reading_retention_days BETWEEN 1 AND 3650 AND uploaded_log_retention_days BETWEEN 1 AND 3650),
+    CONSTRAINT ck_retention_interval CHECK (cleanup_interval_minutes BETWEEN 1 AND 1440),
+    CONSTRAINT ck_retention_capacity CHECK (max_reading_records IS NULL OR max_reading_records BETWEEN 100 AND 100000000),
+    CONSTRAINT ck_retention_enabled CHECK (enabled IN (0, 1)),
+    CONSTRAINT ck_retention_singleton CHECK (id = 1)
+) ENGINE=InnoDB;
+INSERT INTO data_retention_settings (id) VALUES (1) ON DUPLICATE KEY UPDATE id = id;
+
+CREATE TABLE IF NOT EXISTS data_retention_status (
+    id INT PRIMARY KEY,
+    last_attempt_at DATETIME(6) NULL,
+    last_cleanup_at DATETIME(6) NULL,
+    deleted_readings BIGINT NOT NULL DEFAULT 0,
+    deleted_logs BIGINT NOT NULL DEFAULT 0,
+    work_pending TINYINT(1) NOT NULL DEFAULT 0,
+    last_error TEXT NULL,
+    CONSTRAINT ck_retention_status_singleton CHECK (id = 1)
+) ENGINE=InnoDB;
+INSERT INTO data_retention_status (id) VALUES (1) ON DUPLICATE KEY UPDATE id = id;

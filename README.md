@@ -39,7 +39,7 @@ The script creates `bajatitian_shms`, the login user, SHMS tables, and starter r
 API:
 
 ```powershell
-$env:ConnectionStrings__DefaultConnection="Server=127.0.0.1;Port=3306;User ID=root;Password=YOUR_PASSWORD;Database=bajatitian-shms;SslMode=None;AllowPublicKeyRetrieval=True;"
+$env:ConnectionStrings__DefaultConnection="Server=127.0.0.1;Port=3306;User ID=root;Password=YOUR_PASSWORD;Database=bajatitian_shms;SslMode=None;AllowPublicKeyRetrieval=True;"
 dotnet run --project Backend\Web.API\Web.API.csproj
 ```
 

@@ -26,6 +26,10 @@ public static class ServiceRegistration
                 options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
             });
 
+        services.AddScoped(_ => new SHMS.Storage.DataRetentionStore(
+            configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("Database connection is not configured.")));
+
         services.AddEndpointsApiExplorer();
         services.Configure<ForwardedHeadersOptions>(options =>
         {

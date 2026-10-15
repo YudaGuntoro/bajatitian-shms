@@ -65,8 +65,6 @@ ON DUPLICATE KEY UPDATE
 INSERT INTO measurement_units
     (unit_category, unit_symbol, unit_name, is_deleted)
 VALUES
-    ('pressure', 'MPa', 'Megapascal', 0),
-    ('cycle_time', 's', 'Second', 0),
     ('angle', 'deg', 'Degree', 0),
     ('frequency', 'Hz', 'Hertz', 0),
     ('temperature', 'C', 'Celsius', 0),
@@ -79,18 +77,8 @@ ON DUPLICATE KEY UPDATE
     updated_at = CURRENT_TIMESTAMP(6);
 
 INSERT INTO system_settings
-    (id, pressure_unit_id, cycle_time_unit_id, backup_schedule)
-SELECT
-    1,
-    pressure.id,
-    cycle_time.id,
-    'daily'
-FROM measurement_units pressure
-CROSS JOIN measurement_units cycle_time
-WHERE pressure.unit_category = 'pressure'
-  AND pressure.unit_symbol = 'MPa'
-  AND cycle_time.unit_category = 'cycle_time'
-  AND cycle_time.unit_symbol = 's'
+    (id, backup_schedule)
+VALUES (1, 'daily')
 ON DUPLICATE KEY UPDATE
     id = system_settings.id;
 

@@ -7,12 +7,11 @@ import { useTheme } from "@/context/ThemeContext";
 import { useToast } from "@/context/ToastContext";
 import { apiGet } from "@/lib/api";
 import { readBridgeLocationSettings } from "./locationSettings";
-import { readMqttConfiguration, type MqttSensorCode } from "./mqttConfiguration";
+import { readMqttConfiguration, type MqttSensorTopic } from "./mqttConfiguration";
 
 const ReactApexChart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
 const SENSOR_ONLINE_WINDOW_MS = 60_000;
-const sensorOrder: MqttSensorCode[] = ["TILT", "VW", "ATRH", "ACC"];
 
 type HealthState = "online" | "offline" | "unknown";
 
@@ -46,6 +45,7 @@ type LogBuffer = {
   id: number;
   device_id: string;
   payload: string;
+  topic?: string | null;
   status?: string;
   time_stamp: string;
   uploaded_at?: string | null;
@@ -109,26 +109,14 @@ function formatDuration(totalSeconds: number) {
   return `${hours}h ${minutes % 60}m`;
 }
 
-function isToday(value: string, now: number) {
-  const date = parseDate(value);
-  if (!date) return false;
-
-  const current = new Date(now);
-  return (
-    date.getFullYear() === current.getFullYear() &&
-    date.getMonth() === current.getMonth() &&
-    date.getDate() === current.getDate()
-  );
-}
-
 function isRecent(value: string | null, now: number) {
   const date = parseDate(value);
   return date ? now - date.getTime() <= SENSOR_ONLINE_WINDOW_MS : false;
 }
 
-function getLogSensor(log: LogBuffer): MqttSensorCode | null {
-  const source = `${log.device_id} ${log.payload}`.toUpperCase();
-  return sensorOrder.find((code) => source.includes(code)) ?? null;
+function getLogSensor(log: LogBuffer, topics: MqttSensorTopic[]): string | null {
+  const source = `${log.device_id} ${log.topic ?? ""} ${log.payload}`.toUpperCase();
+  return topics.find((topic) => source.includes(topic.code.toUpperCase()) || source.includes(topic.topic.toUpperCase()))?.code ?? null;
 }
 
 function statusClasses(status: HealthState) {
@@ -233,27 +221,25 @@ export default function ProductionDashboard() {
     : "unknown";
   const sensorInputStatus: HealthState = isRecent(dashboard.lastMqttAt, now) ? "online" : "offline";
   const sensorRows = useMemo(() => {
-    return sensorOrder.map((code) => {
-      const config = configuration.topics.find((topic) => topic.code === code);
-      const logs = dashboard.logs.filter((log) => getLogSensor(log) === code);
+    return configuration.topics.map((config) => {
+      const logs = dashboard.logs.filter((log) => getLogSensor(log, configuration.topics) === config.code);
       const lastAt = logs[0]?.time_stamp ?? null;
       const active = config?.enabled ?? false;
 
       return {
         active,
-        code,
+        code: config.code,
         lastAt,
-        name: config?.name ?? code,
+        name: config.name,
         online: active && isRecent(lastAt, now),
-        today: logs.filter((log) => isToday(log.time_stamp, now)).length,
-        topic: config?.topic ?? "-",
+        topic: config.topic,
       };
     });
   }, [configuration.topics, dashboard.logs, now]);
 
   const recentActivities = useMemo(() => {
     return dashboard.logs.slice(0, 12).map((log) => {
-      const sensor = getLogSensor(log);
+      const sensor = getLogSensor(log, configuration.topics);
       return {
         id: log.id,
         label: sensor ? `${sensor} message received` : `${log.device_id} message received`,
@@ -261,7 +247,7 @@ export default function ProductionDashboard() {
         time: log.time_stamp,
       };
     });
-  }, [dashboard.logs]);
+  }, [configuration.topics, dashboard.logs]);
 
   const chartData = useMemo(() => {
     const buckets = Array.from({ length: 12 }, (_, index) => {
@@ -423,38 +409,36 @@ export default function ProductionDashboard() {
         </div>
       </section>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {sensorRows.map((sensor) => (
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900" key={sensor.code}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xl font-black text-slate-900 dark:text-white">{sensor.code}</p>
-                <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">{sensor.name}</p>
-              </div>
-              <StatusPill
-                label={!sensor.active ? "Inactive" : sensor.online ? "Online" : "Offline"}
-                status={!sensor.active ? "unknown" : sensor.online ? "online" : "offline"}
-              />
-            </div>
-            <div className="mt-5 space-y-3 text-sm">
-              <div>
-                <p className="text-xs font-bold uppercase text-slate-400">Topic</p>
-                <p className="mt-1 truncate font-bold text-slate-700 dark:text-slate-200">{sensor.topic}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Sensors</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {sensorRows.filter((sensor) => sensor.online).length} online
+            {" · "}{sensorRows.filter((sensor) => sensor.active && !sensor.online).length} offline
+            {" · "}{sensorRows.filter((sensor) => !sensor.active).length} inactive
+          </p>
+        </div>
+        <details className="group mt-3">
+          <summary className="w-fit cursor-pointer text-sm font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400">
+            <span className="group-open:hidden">Show sensor details</span>
+            <span className="hidden group-open:inline">Hide sensor details</span>
+          </summary>
+          <div className="mt-4 grid gap-x-6 sm:grid-cols-2 xl:grid-cols-4">
+            {sensorRows.map((sensor) => (
+              <div className="flex items-center justify-between gap-3 border-b border-slate-100 py-3 dark:border-slate-800" key={sensor.code}>
                 <div>
-                  <p className="text-xs font-bold uppercase text-slate-400">Last Received</p>
-                  <p className="mt-1 font-bold text-slate-700 dark:text-slate-200">{formatRelative(sensor.lastAt, now)}</p>
+                  <p className="text-sm font-bold text-slate-900 dark:text-white" title={sensor.name}>{sensor.code}</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{formatRelative(sensor.lastAt, now)}</p>
                 </div>
-                <div>
-                  <p className="text-xs font-bold uppercase text-slate-400">Today</p>
-                  <p className="mt-1 font-bold text-slate-700 dark:text-slate-200">{sensor.today} msg</p>
-                </div>
+                <StatusPill
+                  label={!sensor.active ? "Inactive" : sensor.online ? "Online" : "Offline"}
+                  status={!sensor.active ? "unknown" : sensor.online ? "online" : "offline"}
+                />
               </div>
-            </div>
-          </section>
-        ))}
-      </div>
+            ))}
+          </div>
+        </details>
+      </section>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_430px]">
         <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">

@@ -38,11 +38,7 @@ public sealed class MqttClientService : BackgroundService, IMqttClientService, I
 
 	private readonly IReadOnlyList<MqttSubscriptionTopic> _fallbackTopics;
 
-	private readonly string _clientId;
-
-	private readonly string? _username;
-
-	private readonly string? _password;
+	private readonly MqttBrokerOptions _fallbackBrokerOptions;
 
 	private readonly int _qos;
 
@@ -52,9 +48,7 @@ public sealed class MqttClientService : BackgroundService, IMqttClientService, I
 
 	private MqttClientOptions? _mqttClientOptions;
 
-	private string _brokerAddress;
-
-	private int _port;
+	private string _brokerSignature = string.Empty;
 
 	private IReadOnlyList<string> _subscribedTopics = Array.Empty<string>();
 
@@ -70,11 +64,13 @@ public sealed class MqttClientService : BackgroundService, IMqttClientService, I
 		_messageHandler = messageHandler;
 		_topicConfigService = topicConfigService;
 		Config instance = Config.Instance;
-		_brokerAddress = ReadSetting(instance, "MQTT", "Host", "MQTT__Host", "MQTT_HOST") ?? "127.0.0.1";
-		_port = ReadIntSetting(instance, "MQTT", "Port", 1883, "MQTT__Port", "MQTT_PORT");
-		_clientId = ReadSetting(instance, "MQTT", "ClientId", "MQTT__ClientId", "MQTT_CLIENT_ID") ?? "Worker";
-		_username = ReadSetting(instance, "MQTT", "Username", "MQTT__Username", "MQTT_USERNAME");
-		_password = ReadSetting(instance, "MQTT", "Password", "MQTT__Password", "MQTT_PASSWORD");
+		_fallbackBrokerOptions = new MqttBrokerOptions(
+			ReadSetting(instance, "MQTT", "Host", "MQTT__Host", "MQTT_HOST") ?? DefaultBrokerAddress,
+			ReadIntSetting(instance, "MQTT", "Port", DefaultPort, "MQTT__Port", "MQTT_PORT"),
+			ReadSetting(instance, "MQTT", "ClientId", "MQTT__ClientId", "MQTT_CLIENT_ID") ?? DefaultClientId,
+			ReadSetting(instance, "MQTT", "Username", "MQTT__Username", "MQTT_USERNAME"),
+			ReadSetting(instance, "MQTT", "Password", "MQTT__Password", "MQTT_PASSWORD"),
+			ReadBoolSetting(instance, "MQTT", "UseTls", false, "MQTT__UseTls", "MQTT_USE_TLS"));
 		_qos = ReadIntSetting(instance, "MQTT", "Qos", 2, "MQTT__Qos", "MQTT_QOS");
 		_retryDelay = TimeSpan.FromSeconds(Math.Max(1, ReadIntSetting(instance, "Worker", "ReconnectDelaySeconds", 3, "Worker__ReconnectDelaySeconds", "WORKER_RECONNECT_DELAY_SECONDS")));
 		_loopInterval = TimeSpan.FromSeconds(Math.Max(1, ReadIntSetting(instance, "Worker", "IntervalSeconds", 1, "Worker__IntervalSeconds", "WORKER_INTERVAL_SECONDS")));
@@ -88,17 +84,37 @@ public sealed class MqttClientService : BackgroundService, IMqttClientService, I
 
 	public void Configure(string brokerHost, int brokerPort)
 	{
-		string text = (string.IsNullOrWhiteSpace(brokerHost) ? "127.0.0.1" : brokerHost);
-		int num = ((brokerPort > 0) ? brokerPort : 1883);
-		string text2 = (string.IsNullOrWhiteSpace(_clientId) ? $"{"Worker"}-{Environment.MachineName}-{Guid.NewGuid():N}" : _clientId);
-		MqttClientOptionsBuilder mqttClientOptionsBuilder = new MqttClientOptionsBuilder().WithClientId(text2).WithTcpServer(text, num).WithKeepAlivePeriod(TimeSpan.FromSeconds(30.0))
+		Configure(new MqttBrokerOptions(
+			string.IsNullOrWhiteSpace(brokerHost) ? DefaultBrokerAddress : brokerHost,
+			brokerPort > 0 ? brokerPort : DefaultPort,
+			_fallbackBrokerOptions.ClientId,
+			_fallbackBrokerOptions.Username,
+			_fallbackBrokerOptions.Password,
+			_fallbackBrokerOptions.UseTls));
+	}
+
+	private void Configure(MqttBrokerOptions options)
+	{
+		string host = string.IsNullOrWhiteSpace(options.Host) ? DefaultBrokerAddress : options.Host.Trim();
+		int port = options.Port > 0 ? options.Port : DefaultPort;
+		string clientId = string.IsNullOrWhiteSpace(options.ClientId) ? $"{DefaultClientId}-{Environment.MachineName}-{Guid.NewGuid():N}" : options.ClientId.Trim();
+		string? username = string.IsNullOrWhiteSpace(options.Username) ? null : options.Username.Trim();
+		MqttClientOptionsBuilder mqttClientOptionsBuilder = new MqttClientOptionsBuilder().WithClientId(clientId).WithTcpServer(host, port).WithKeepAlivePeriod(TimeSpan.FromSeconds(30.0))
 			.WithTimeout(TimeSpan.FromSeconds(10.0));
-		if (!string.IsNullOrWhiteSpace(_username))
+		if (options.UseTls)
 		{
-			mqttClientOptionsBuilder.WithCredentials(_username, _password ?? string.Empty);
+			mqttClientOptionsBuilder.WithTlsOptions(tlsOptions =>
+			{
+				tlsOptions.UseTls();
+			});
+		}
+		if (!string.IsNullOrWhiteSpace(username))
+		{
+			mqttClientOptionsBuilder.WithCredentials(username, options.Password ?? string.Empty);
 		}
 		_mqttClientOptions = mqttClientOptionsBuilder.Build();
-		_logger.LogInformation("[MQTT] Config: Host={Host} Port={Port} ClientId={ClientId}", text, num, text2);
+		_brokerSignature = (options with { Host = host, Port = port, ClientId = clientId, Username = username }).Signature;
+		_logger.LogInformation("[MQTT] Config: Host={Host} Port={Port} ClientId={ClientId} UseTls={UseTls}", host, port, clientId, options.UseTls);
 	}
 
 	public async Task ConnectAsync(CancellationToken cancellationToken = default(CancellationToken))
@@ -177,19 +193,12 @@ public sealed class MqttClientService : BackgroundService, IMqttClientService, I
 	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 	{
 		_stoppingToken = stoppingToken;
-		if (string.IsNullOrWhiteSpace(_brokerAddress))
-		{
-			_brokerAddress = "127.0.0.1";
-		}
-		if (_port <= 0)
-		{
-			_port = 1883;
-		}
-		Configure(_brokerAddress, _port);
+		await ApplyBrokerConfigurationAsync(stoppingToken);
 		while (!stoppingToken.IsCancellationRequested)
 		{
 			try
 			{
+				await ApplyBrokerConfigurationAsync(stoppingToken);
 				if (!_mqttClient.IsConnected)
 				{
 					await ConnectAsync(stoppingToken);
@@ -213,6 +222,32 @@ public sealed class MqttClientService : BackgroundService, IMqttClientService, I
 				await Task.Delay(_retryDelay, stoppingToken);
 			}
 			await Task.Delay(_loopInterval, stoppingToken);
+		}
+	}
+
+	private async Task ApplyBrokerConfigurationAsync(CancellationToken cancellationToken)
+	{
+		var configuredOptions = await _topicConfigService.GetActiveBrokerConfigAsync(_fallbackBrokerOptions.Password, cancellationToken)
+			?? _fallbackBrokerOptions;
+
+		if (configuredOptions.Port <= 0)
+		{
+			configuredOptions = configuredOptions with { Port = DefaultPort };
+		}
+
+		if (string.Equals(_brokerSignature, configuredOptions.Signature, StringComparison.Ordinal))
+		{
+			return;
+		}
+
+		Configure(configuredOptions);
+		_subscribedTopics = Array.Empty<string>();
+		_subscribedTopicSignature = string.Empty;
+
+		if (_mqttClient.IsConnected)
+		{
+			_logger.LogInformation("[MQTT] Broker configuration changed. Reconnecting...");
+			await _mqttClient.DisconnectAsync(cancellationToken: cancellationToken);
 		}
 	}
 
@@ -382,6 +417,22 @@ public sealed class MqttClientService : BackgroundService, IMqttClientService, I
 	{
 		string? s = ReadSetting(cfg, section, key, environmentKeys);
 		return int.TryParse(s, out var result) ? result : cfg.ReadInt(key, section, defaultValue);
+	}
+
+	private static bool ReadBoolSetting(Config cfg, string section, string key, bool defaultValue, params string[] environmentKeys)
+	{
+		string? value = ReadSetting(cfg, section, key, environmentKeys);
+		if (bool.TryParse(value, out var boolValue))
+		{
+			return boolValue;
+		}
+
+		if (int.TryParse(value, out var intValue))
+		{
+			return intValue != 0;
+		}
+
+		return defaultValue;
 	}
 
 	private static MqttQualityOfServiceLevel ToQualityOfServiceLevel(int qos)

@@ -1,4 +1,6 @@
 using Newtonsoft.Json.Linq;
+using System.Globalization;
+using System.Text.RegularExpressions;
 using Worker.Domain.Models;
 using Worker.Domain.Payloads;
 using Worker.Shared;
@@ -7,7 +9,50 @@ namespace Worker.Application.Mapping;
 
 public static class ShmsPayloadMapper
 {
+    public static string ResolveDeviceCode(string topic, string payload)
+    {
+        // Raw logging must also work for malformed payloads.
+        if (payload.TrimStart().StartsWith('{'))
+        {
+            try
+            {
+                var data = JObject.Parse(payload);
+                var device = ReadString(data, "device_id", "deviceId", "device_code", "deviceCode", "device", "serial_number");
+                if (!string.IsNullOrWhiteSpace(device)) return device;
+            }
+            catch (Newtonsoft.Json.JsonException)
+            {
+                // Keep the original payload in the log even if it cannot be mapped.
+            }
+        }
+        return DeviceFromTopic(topic, SensorFromTopic(topic));
+    }
+
+    public static IReadOnlyList<ShmsSensorReading> ToSensorReadings(string topic, string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            throw new FormatException("MQTT payload is empty.");
+        }
+
+        var trimmedPayload = payload.Trim();
+        if (trimmedPayload.StartsWith('{'))
+        {
+            return [ToJsonSensorReading(topic, trimmedPayload)];
+        }
+
+        return ToRawCsvSensorReadings(topic, trimmedPayload);
+    }
+
     public static ShmsSensorReading ToSensorReading(string topic, string payload)
+    {
+        var readings = ToSensorReadings(topic, payload);
+        return readings.Count == 1
+            ? readings[0]
+            : throw new FormatException("MQTT payload contains multiple sensor readings.");
+    }
+
+    private static ShmsSensorReading ToJsonSensorReading(string topic, string payload)
     {
         if (string.IsNullOrWhiteSpace(payload))
         {
@@ -141,10 +186,41 @@ public static class ShmsPayloadMapper
 
     private static string DeviceFromTopic(string topic, string sensorCode)
     {
+        var topicDevice = DeviceCodeSegmentFromTopic(topic, sensorCode);
+        if (!string.IsNullOrWhiteSpace(topicDevice))
+        {
+            return topicDevice;
+        }
+
         var machineName = SignalHelper.TopicToMachineName(topic);
         return string.IsNullOrWhiteSpace(machineName)
             ? $"SHMS-{sensorCode}-01"
             : machineName;
+    }
+
+    private static string? DeviceCodeSegmentFromTopic(string topic, string sensorCode)
+    {
+        if (string.IsNullOrWhiteSpace(topic))
+        {
+            return null;
+        }
+
+        var normalizedSensor = sensorCode.ToLowerInvariant();
+        var segments = topic
+            .Trim()
+            .Trim('/')
+            .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Reverse();
+
+        foreach (var segment in segments)
+        {
+            if (Regex.IsMatch(segment, $"^{Regex.Escape(normalizedSensor)}[-_]?\\d+$", RegexOptions.IgnoreCase))
+            {
+                return segment;
+            }
+        }
+
+        return null;
     }
 
     private static string MeasurementFromSensor(string sensorCode) =>
@@ -159,7 +235,7 @@ public static class ShmsPayloadMapper
 
     private static string BuildChannelCode(string sensorCode, string measurementName, string? axis)
     {
-        var suffix = string.IsNullOrWhiteSpace(axis) ? measurementName : axis;
+        var suffix = string.IsNullOrWhiteSpace(axis) ? measurementName : $"{measurementName}-{axis}";
         return $"{sensorCode}-{suffix}".ToUpperInvariant();
     }
 
@@ -193,6 +269,147 @@ public static class ShmsPayloadMapper
 
     private static string FirstText(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
+
+    private static IReadOnlyList<ShmsSensorReading> ToRawCsvSensorReadings(string topic, string payload)
+    {
+        var values = payload
+            .Split(',', StringSplitOptions.TrimEntries)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
+
+        if (values.Length == 2)
+        {
+            return ToVibratingWireReadings(topic, payload, values);
+        }
+
+        if (values.Length == 4)
+        {
+            return ToAccelerometerReadings(topic, payload, values);
+        }
+
+        if (values.Length == 7)
+        {
+            return ToTiltReadings(topic, payload, values);
+        }
+
+        if (values.Length == 6)
+        {
+            return ToAtrhReadings(topic, payload, values);
+        }
+
+        throw new FormatException($"Unsupported raw MQTT payload format. Expected 2 fields for VW, 4 fields for ACC, 6 fields for ATRH, or 7 fields for TILT, got {values.Length}.");
+    }
+
+    private static IReadOnlyList<ShmsSensorReading> ToVibratingWireReadings(
+        string topic,
+        string payload,
+        IReadOnlyList<string> values)
+    {
+        var measuredAt = ParseDateTime(values[0]);
+        var deviceCode = DeviceFromTopic(topic, "VW");
+
+        return
+        [
+            CreateReading(deviceCode, "VW", "VW-FREQUENCY", "frequency", string.Empty, ParseDecimal(values[1]), "Hz", "frequency", measuredAt, payload)
+        ];
+    }
+
+    private static IReadOnlyList<ShmsSensorReading> ToAccelerometerReadings(
+        string topic,
+        string payload,
+        IReadOnlyList<string> values)
+    {
+        var measuredAt = ParseDateTime(values[0]);
+        var deviceCode = DeviceFromTopic(topic, "ACC");
+
+        return
+        [
+            CreateReading(deviceCode, "ACC", "ACC-ACCELERATION-X", "acceleration", "X", ParseDecimal(values[1]), "count", "acceleration", measuredAt, payload),
+            CreateReading(deviceCode, "ACC", "ACC-ACCELERATION-Y", "acceleration", "Y", ParseDecimal(values[2]), "count", "acceleration", measuredAt, payload),
+            CreateReading(deviceCode, "ACC", "ACC-ACCELERATION-Z", "acceleration", "Z", ParseDecimal(values[3]), "count", "acceleration", measuredAt, payload)
+        ];
+    }
+
+    private static IReadOnlyList<ShmsSensorReading> ToTiltReadings(
+        string topic,
+        string payload,
+        IReadOnlyList<string> values)
+    {
+        var measuredAt = ParseDateTime(values[0]);
+        var deviceCode = DeviceFromTopic(topic, "TILT");
+
+        return
+        [
+            CreateReading(deviceCode, "TILT", "TILT-TILT-X", "tilt", "X", ParseDecimal(values[1]), "deg", "angle", measuredAt, payload),
+            CreateReading(deviceCode, "TILT", "TILT-TILT-Y", "tilt", "Y", ParseDecimal(values[2]), "deg", "angle", measuredAt, payload),
+            CreateReading(deviceCode, "TILT", "TILT-TEMPERATURE-X", "temperature", "X", ParseDecimal(values[3]), "C", "temperature", measuredAt, payload),
+            CreateReading(deviceCode, "TILT", "TILT-TEMPERATURE-Y", "temperature", "Y", ParseDecimal(values[4]), "C", "temperature", measuredAt, payload),
+            CreateReading(deviceCode, "TILT", "TILT-RAW-X", "raw", "X", ParseDecimal(values[5]), "count", "raw", measuredAt, payload),
+            CreateReading(deviceCode, "TILT", "TILT-RAW-Y", "raw", "Y", ParseDecimal(values[6]), "count", "raw", measuredAt, payload)
+        ];
+    }
+
+    private static IReadOnlyList<ShmsSensorReading> ToAtrhReadings(
+        string topic,
+        string payload,
+        IReadOnlyList<string> values)
+    {
+        var measuredAt = ParseDateTime(values[0]);
+        var deviceCode = DeviceFromTopic(topic, "ATRH");
+        var humidityRaw = ParseDecimal(values[2]);
+        var humidity = humidityRaw > 100 ? humidityRaw / 10 : humidityRaw;
+
+        return
+        [
+            CreateReading(deviceCode, "ATRH", "ATRH-TEMPERATURE", "temperature", string.Empty, ParseDecimal(values[1]), "C", "temperature", measuredAt, payload),
+            CreateReading(deviceCode, "ATRH", "ATRH-HUMIDITY", "humidity", string.Empty, humidity, "%RH", "humidity", measuredAt, payload),
+            CreateReading(deviceCode, "ATRH", "ATRH-RAW-HUMIDITY", "raw_humidity", string.Empty, humidityRaw, "count", "raw", measuredAt, payload),
+            CreateReading(deviceCode, "ATRH", "ATRH-RAW-1", "raw", "1", ParseDecimal(values[3]), "count", "raw", measuredAt, payload),
+            CreateReading(deviceCode, "ATRH", "ATRH-RAW-2", "raw", "2", ParseDecimal(values[4]), "count", "raw", measuredAt, payload),
+            CreateReading(deviceCode, "ATRH", "ATRH-RAW-3", "raw", "3", ParseDecimal(values[5]), "count", "raw", measuredAt, payload)
+        ];
+    }
+
+    private static ShmsSensorReading CreateReading(
+        string deviceCode,
+        string sensorCode,
+        string channelCode,
+        string measurementName,
+        string axis,
+        decimal value,
+        string unitSymbol,
+        string unitCategory,
+        DateTime measuredAt,
+        string rawPayload)
+    {
+        var reading = new ShmsSensorReading
+        {
+            DeviceCode = deviceCode,
+            SensorCode = sensorCode,
+            ChannelCode = channelCode,
+            MeasurementName = measurementName,
+            Axis = axis,
+            UnitSymbol = unitSymbol,
+            UnitCategory = unitCategory,
+            NumericValue = value,
+            MeasuredAt = measuredAt,
+            QualityCode = "good",
+            RawPayload = rawPayload
+        };
+
+        Validate(reading);
+        return reading;
+    }
+
+    private static DateTime ParseDateTime(string value) =>
+        DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var parsed)
+            ? parsed
+            : throw new FormatException($"Invalid MQTT timestamp: {value}");
+
+    private static decimal ParseDecimal(string value) =>
+        decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : throw new FormatException($"Invalid MQTT numeric value: {value}");
 
     private static void Validate(ShmsSensorReading reading)
     {

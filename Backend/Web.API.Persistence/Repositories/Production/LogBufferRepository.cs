@@ -26,6 +26,7 @@ public sealed class LogBufferRepository : ILogBufferRepository
         return await _context.LogBuffers
             .AsNoTracking()
             .OrderByDescending(x => x.TimeStamp)
+            .ThenByDescending(x => x.Id)
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
