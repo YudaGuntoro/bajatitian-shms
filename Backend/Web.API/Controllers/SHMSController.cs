@@ -92,6 +92,12 @@ public class SHMSSystemController : ApiControllerBase
         }
     }
 
+    [HttpGet("sensors/latest")]
+    public async Task<IActionResult> LatestSensorReadings(CancellationToken cancellationToken)
+    {
+        return ApiOk(await _shmsStatusService.GetLatestReadingsAsync(cancellationToken));
+    }
+
     [HttpGet("mqtt-broker/status")]
     public async Task<IActionResult> MqttBrokerStatus(CancellationToken cancellationToken)
     {

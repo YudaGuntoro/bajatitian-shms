@@ -9,4 +9,6 @@ public interface IShmsStatusRepository
     Task<DateTime?> GetLastMqttAtAsync(CancellationToken cancellationToken = default);
 
     Task<ServerSyncStatus?> GetServerSyncStatusAsync(CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<LatestSensorReadingResponse>> GetLatestReadingsAsync(CancellationToken cancellationToken = default);
 }

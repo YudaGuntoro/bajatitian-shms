@@ -294,6 +294,39 @@ public class MainServerStatusResponse
     public long DbSpilloverCount { get; set; }
 }
 
+public class LatestSensorReadingResponse
+{
+    [JsonPropertyName("device_code")]
+    public string DeviceCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("channel_code")]
+    public string ChannelCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("measurement_name")]
+    public string MeasurementName { get; set; } = string.Empty;
+
+    [JsonPropertyName("axis")]
+    public string? Axis { get; set; }
+
+    [JsonPropertyName("value")]
+    public decimal Value { get; set; }
+
+    [JsonPropertyName("unit")]
+    public string Unit { get; set; } = string.Empty;
+
+    [JsonPropertyName("measured_at")]
+    public DateTime MeasuredAt { get; set; }
+
+    [JsonPropertyName("received_at")]
+    public DateTime ReceivedAt { get; set; }
+
+    [JsonPropertyName("received_age_seconds")]
+    public long ReceivedAgeSeconds { get; set; }
+
+    [JsonPropertyName("topic")]
+    public string? Topic { get; set; }
+}
+
 public class ShmsSystemStatusResponse
 {
     [JsonPropertyName("status")]

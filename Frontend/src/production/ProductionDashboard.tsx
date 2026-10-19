@@ -7,7 +7,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { useToast } from "@/context/ToastContext";
 import { apiGet } from "@/lib/api";
 import { readBridgeLocationSettings } from "./locationSettings";
-import { readMqttConfiguration, type MqttSensorTopic } from "./mqttConfiguration";
+import { fetchMqttConfiguration, readMqttConfiguration, type MqttSensorTopic } from "./mqttConfiguration";
 
 const ReactApexChart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
@@ -65,7 +65,34 @@ type DashboardState = {
   logs: LogBuffer[];
   mainServer: MainServerStatus | null;
   totalBuffered: number;
+  latestReadings: LatestSensorReading[] | null;
 };
+
+type LatestSensorReading = {
+  device_code: string;
+  channel_code: string;
+  measurement_name: string;
+  axis: string | null;
+  value: number;
+  unit: string;
+  measured_at: string;
+  received_at: string;
+  received_age_seconds?: number;
+  topic: string | null;
+};
+
+function normalizeDeviceCode(code: string) {
+  return code.toUpperCase().replace(/^SHMS[-_]?/, "").replace(/[-_]/g, "");
+}
+
+function readingLabel(reading: LatestSensorReading) {
+  const name = reading.measurement_name.replace(/_/g, " ");
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)}${reading.axis ? ` ${reading.axis}` : ""}`;
+}
+
+function formatReading(reading: LatestSensorReading) {
+  return `${reading.value.toLocaleString("en-GB", { maximumFractionDigits: 8 })} ${reading.unit}`.trim();
+}
 
 const timeFormatter = new Intl.DateTimeFormat("en-GB", {
   hour: "2-digit",
@@ -115,6 +142,8 @@ function isRecent(value: string | null, now: number) {
 }
 
 function getLogSensor(log: LogBuffer, topics: MqttSensorTopic[]): string | null {
+  const exact = topics.find((topic) => topic.topic === log.topic || normalizeDeviceCode(log.device_id) === topic.code.toUpperCase());
+  if (exact) return exact.code;
   const source = `${log.device_id} ${log.topic ?? ""} ${log.payload}`.toUpperCase();
   return topics.find((topic) => source.includes(topic.code.toUpperCase()) || source.includes(topic.topic.toUpperCase()))?.code ?? null;
 }
@@ -133,7 +162,7 @@ function statusClasses(status: HealthState) {
 
 function StatusPill({ label, status }: { label: string; status: HealthState }) {
   return (
-    <span className={`inline-flex w-fit items-center gap-2 rounded-full px-3 py-1 text-xs font-black ${statusClasses(status)}`}>
+    <span className={`inline-flex w-fit items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${statusClasses(status)}`}>
       <span className={`size-2 rounded-full ${status === "online" ? "bg-teal-600" : status === "offline" ? "bg-red-600" : "bg-slate-400"}`} />
       {label}
     </span>
@@ -160,7 +189,7 @@ function MetricCard({
         <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{label}</p>
         {status ? <StatusPill label={status === "online" ? "Online" : status === "offline" ? "Offline" : "Waiting"} status={status} /> : null}
       </div>
-      <div className="mt-3 text-2xl font-black tracking-tight text-slate-900 dark:text-white">{value}</div>
+      <div className="mt-3 text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">{value}</div>
       <p className="mt-2 text-xs font-semibold text-slate-400">{note}</p>
     </div>
   );
@@ -171,7 +200,7 @@ export default function ProductionDashboard() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(() => Date.now());
-  const [configuration] = useState(() => readMqttConfiguration());
+  const [configuration, setConfiguration] = useState(() => readMqttConfiguration());
   const [locationSettings] = useState(() => readBridgeLocationSettings());
   const [dashboard, setDashboard] = useState<DashboardState>({
     broker: null,
@@ -179,6 +208,7 @@ export default function ProductionDashboard() {
     logs: [],
     mainServer: null,
     totalBuffered: 0,
+    latestReadings: null,
   });
 
   const load = useCallback(async () => {
@@ -186,28 +216,41 @@ export default function ProductionDashboard() {
     const loadTime = Date.now();
 
     try {
-      const [statusResult, brokerResult, bufferResult] = await Promise.allSettled([
+      const [statusResult, brokerResult, bufferResult, readingsResult] = await Promise.allSettled([
         apiGet<SHMSStatus>("/api/shms-system/status"),
         apiGet<MqttBrokerStatus>("/api/shms-system/mqtt-broker/status"),
         apiGet<PagedLogBuffer>("/api/log-buffer?page=1&limit=50"),
+        apiGet<LatestSensorReading[]>("/api/shms-system/sensors/latest"),
       ]);
 
       const mainServer = statusResult.status === "fulfilled" ? statusResult.value.main_server ?? null : null;
 
       setNow(loadTime);
-      setDashboard({
+      setDashboard((current) => ({
         broker: brokerResult.status === "fulfilled" ? brokerResult.value : null,
         lastMqttAt: statusResult.status === "fulfilled" ? statusResult.value.last_mqtt_at ?? null : null,
         logs: bufferResult.status === "fulfilled" ? bufferResult.value.data : [],
         mainServer,
         totalBuffered: mainServer?.redis_buffer_count ?? 0,
-      });
+        latestReadings: readingsResult.status === "fulfilled" ? readingsResult.value.map((reading) => ({
+          ...reading,
+          // MySQL DATETIME has no timezone. Use server-calculated age for receipt status.
+          received_at: typeof reading.received_age_seconds === "number"
+            ? new Date(loadTime - reading.received_age_seconds * 1000).toISOString() : reading.received_at,
+        })) : current.latestReadings,
+      }));
     } catch (err) {
       toast.error({ message: err instanceof Error ? err.message : "Failed to load dashboard." });
     } finally {
       setLoading(false);
     }
   }, [toast]);
+
+  useEffect(() => {
+    let active = true;
+    void fetchMqttConfiguration().then((value) => { if (active) setConfiguration(value); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     void load();
@@ -223,7 +266,19 @@ export default function ProductionDashboard() {
   const sensorRows = useMemo(() => {
     return configuration.topics.map((config) => {
       const logs = dashboard.logs.filter((log) => getLogSensor(log, configuration.topics) === config.code);
-      const lastAt = logs[0]?.time_stamp ?? null;
+      const readings = (dashboard.latestReadings ?? []).filter((reading) =>
+        normalizeDeviceCode(reading.device_code) === config.code.toUpperCase() || reading.topic === config.topic);
+      // Preserve individual channel values; a late historical sample must not replace newer measurements.
+      const byMeasurement = new Map<string, LatestSensorReading>();
+      for (const reading of readings) {
+        const key = `${reading.measurement_name}:${reading.axis ?? ""}`;
+        const existing = byMeasurement.get(key);
+        if (!existing || Date.parse(reading.measured_at) > Date.parse(existing.measured_at)) byMeasurement.set(key, reading);
+      }
+      const values = Array.from(byMeasurement.values());
+      const lastAt = (readings.length > 0 ? readings.map((reading) => reading.received_at) : logs.map((log) => log.time_stamp))
+        .filter((value) => parseDate(value) !== null)
+        .sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null;
       const active = config?.enabled ?? false;
 
       return {
@@ -233,9 +288,10 @@ export default function ProductionDashboard() {
         name: config.name,
         online: active && isRecent(lastAt, now),
         topic: config.topic,
+        values,
       };
     });
-  }, [configuration.topics, dashboard.logs, now]);
+  }, [configuration.topics, dashboard.logs, dashboard.latestReadings, now]);
 
   const recentActivities = useMemo(() => {
     return dashboard.logs.slice(0, 12).map((log) => {
@@ -336,11 +392,11 @@ export default function ProductionDashboard() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-brand-600">Middleware</p>
-          <h1 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">Dashboard</h1>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-600">Middleware</p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-900 dark:text-white">Dashboard</h1>
         </div>
         <button
-          className="h-10 rounded-lg bg-brand-500 px-5 text-sm font-bold text-white transition hover:bg-brand-600 disabled:opacity-60"
+          className="h-10 rounded-lg bg-brand-500 px-5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
           disabled={loading}
           onClick={() => void load()}
           type="button"
@@ -387,31 +443,31 @@ export default function ProductionDashboard() {
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/10">
         <div>
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Location Overview</p>
-            <h2 className="mt-2 text-lg font-black text-slate-900 dark:text-white">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Location Overview</p>
+            <h2 className="mt-2 text-lg font-semibold text-slate-900 dark:text-white">
               {locationSettings.bridgeName || "Bridge name not set"}
             </h2>
           </div>
         </div>
         <div className="mt-5 grid gap-4 md:grid-cols-3">
           <div className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
-            <p className="text-xs font-bold uppercase text-slate-400">Area</p>
-            <p className="mt-2 text-sm font-bold text-slate-800 dark:text-slate-100">{locationSettings.area || "-"}</p>
+            <p className="text-xs font-semibold uppercase text-slate-400">Area</p>
+            <p className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100">{locationSettings.area || "-"}</p>
           </div>
           <div className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
-            <p className="text-xs font-bold uppercase text-slate-400">Bridge Name</p>
-            <p className="mt-2 text-sm font-bold text-slate-800 dark:text-slate-100">{locationSettings.bridgeName || "-"}</p>
+            <p className="text-xs font-semibold uppercase text-slate-400">Bridge Name</p>
+            <p className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100">{locationSettings.bridgeName || "-"}</p>
           </div>
           <div className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
-            <p className="text-xs font-bold uppercase text-slate-400">Map Location</p>
-            <p className="mt-2 truncate text-sm font-bold text-slate-800 dark:text-slate-100">{locationSettings.mapQuery || "-"}</p>
+            <p className="text-xs font-semibold uppercase text-slate-400">Map Location</p>
+            <p className="mt-2 truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{locationSettings.mapQuery || "-"}</p>
           </div>
         </div>
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Sensors</h2>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Sensors</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {sensorRows.filter((sensor) => sensor.online).length} online
             {" · "}{sensorRows.filter((sensor) => sensor.active && !sensor.online).length} offline
@@ -423,17 +479,27 @@ export default function ProductionDashboard() {
             <span className="group-open:hidden">Show sensor details</span>
             <span className="hidden group-open:inline">Hide sensor details</span>
           </summary>
-          <div className="mt-4 grid gap-x-6 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {sensorRows.map((sensor) => (
-              <div className="flex items-center justify-between gap-3 border-b border-slate-100 py-3 dark:border-slate-800" key={sensor.code}>
-                <div>
-                  <p className="text-sm font-bold text-slate-900 dark:text-white" title={sensor.name}>{sensor.code}</p>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{formatRelative(sensor.lastAt, now)}</p>
+              <div className="h-[120px] min-w-0 overflow-y-auto rounded-lg border border-slate-200 p-3 dark:border-slate-700" key={sensor.code}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white" title={sensor.name}>{sensor.code}</p>
+                  <StatusPill
+                    label={!sensor.active ? "Inactive" : sensor.online ? "Online" : "Offline"}
+                    status={!sensor.active ? "unknown" : sensor.online ? "online" : "offline"}
+                  />
                 </div>
-                <StatusPill
-                  label={!sensor.active ? "Inactive" : sensor.online ? "Online" : "Offline"}
-                  status={!sensor.active ? "unknown" : sensor.online ? "online" : "offline"}
-                />
+                {sensor.values.length > 0 ? (
+                  <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                    {sensor.values.map((reading) => (
+                      <div key={reading.channel_code} title={`Measured: ${new Date(reading.measured_at).toLocaleString("en-GB")}`}>
+                        <dt className="text-slate-500 dark:text-slate-400">{readingLabel(reading)}</dt>
+                        <dd className="mt-0.5 break-words font-medium text-slate-800 dark:text-slate-100">{formatReading(reading)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{dashboard.latestReadings === null ? (loading ? "Loading last reading…" : "Last reading unavailable") : "No data"}</p>}
+                {sensor.lastAt && <p className="mt-2 text-xs text-slate-500 dark:text-slate-400" title={new Date(sensor.lastAt).toLocaleString("en-GB")}>Last received: {formatRelative(sensor.lastAt, now)}</p>}
               </div>
             ))}
           </div>
@@ -443,7 +509,7 @@ export default function ProductionDashboard() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_430px]">
         <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Upload Health</h2>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Upload Health</h2>
             <p className="mt-1 text-xs font-semibold text-slate-400">Data masuk vs data terkirim per jam.</p>
           </div>
           <div className="mt-5 max-w-full overflow-x-auto">
@@ -454,7 +520,7 @@ export default function ProductionDashboard() {
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Log Buffer Summary</h2>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Log Buffer Summary</h2>
           <div className="mt-5 grid grid-cols-2 gap-3">
             <MetricCard accent="bg-amber-500" label="Redis Buffer" note="Data menunggu upload" value={dashboard.totalBuffered} />
             <MetricCard accent="bg-red-600" label="DB Fallback" note="Redis dipindah ke DB" value={dashboard.mainServer?.db_spillover_count ?? 0} />
@@ -462,8 +528,8 @@ export default function ProductionDashboard() {
             <MetricCard accent="bg-slate-500" label="Last Upload Failed" note={dashboard.mainServer?.last_error || "No error"} value={formatTime(dashboard.mainServer?.last_failure_at)} />
           </div>
           <div className="mt-4 rounded-lg border border-slate-100 p-4 dark:border-slate-800">
-            <p className="text-xs font-bold uppercase text-slate-400">Oldest Pending Data</p>
-            <p className="mt-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+            <p className="text-xs font-semibold uppercase text-slate-400">Oldest Pending Data</p>
+            <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
               {dashboard.logs.length ? formatRelative(dashboard.logs[dashboard.logs.length - 1].time_stamp, now) : "No pending data"}
             </p>
           </div>
@@ -473,7 +539,7 @@ export default function ProductionDashboard() {
       <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
           <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Recent Activity</h2>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Recent Activity</h2>
             <p className="mt-1 text-xs font-semibold text-slate-400">Latest device messages captured by middleware.</p>
           </div>
         </div>
@@ -489,10 +555,10 @@ export default function ProductionDashboard() {
             <tbody>
               {recentActivities.map((activity) => (
                 <tr key={activity.id}>
-                  <td className="border-b border-slate-100 px-5 py-4 font-bold text-slate-700 dark:border-slate-800 dark:text-slate-200">
+                  <td className="border-b border-slate-100 px-5 py-4 font-semibold text-slate-700 dark:border-slate-800 dark:text-slate-200">
                     {formatTime(activity.time)}
                   </td>
-                  <td className="border-b border-slate-100 px-4 py-4 font-semibold text-slate-600 dark:border-slate-800 dark:text-slate-300">
+                  <td className="border-b border-slate-100 px-4 py-4 font-medium text-slate-600 dark:border-slate-800 dark:text-slate-300">
                     {activity.label}
                   </td>
                   <td className="border-b border-slate-100 px-4 py-4 text-slate-500 dark:border-slate-800 dark:text-slate-400">
@@ -503,7 +569,7 @@ export default function ProductionDashboard() {
             </tbody>
           </table>
           {!recentActivities.length ? (
-            <p className="py-10 text-center text-sm font-semibold text-slate-400">No device activity yet.</p>
+            <p className="py-10 text-center text-sm font-medium text-slate-400">No device activity yet.</p>
           ) : null}
         </div>
       </section>

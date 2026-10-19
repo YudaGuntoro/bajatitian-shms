@@ -194,6 +194,22 @@ multi-Worker locking, and large-backlog continuation.
 InnoDB can reuse space freed by deletion; database files do not necessarily shrink
 on disk immediately. The count cap limits rows, not physical bytes.
 
+## Last sensor readings
+
+The authenticated `GET /api/shms-system/sensors/latest` endpoint returns the newest
+stored measurement for each device/channel, including value, unit, measurement
+time and last received time. It reads normalized sensor history directly, using
+the existing `(sensor_channel_id, measured_at)` unique index and the
+`log_buffer(device_id,time_stamp)` index. No schema migration is required.
+
+The dashboard displays these values even when the sensor is offline, independently
+of its 50 most recent activity rows. Later arrival of an older historical sample
+does not replace a newer measurement. Values survive browser reloads and raw log
+cleanup while their sensor history is retained. The existing FIFO policy still
+controls history retention; no additional permanent copy is created. A sensor with
+no retained measurements shows `No data`; an initial API failure shows an
+unavailable message and refresh failures preserve values already displayed.
+
 ## Legacy system settings cleanup
 
 Migration `20261015_003_remove_legacy_system_settings.sql` removes the obsolete

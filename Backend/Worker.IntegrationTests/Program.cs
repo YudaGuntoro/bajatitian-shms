@@ -115,6 +115,7 @@ try
     await RetentionChecks.RunAsync(db, writer, repository.FullName);
     await SystemSettingsChecks.RunAsync(db, repository.FullName);
     await LocalModeChecks.RunAsync(db);
+    await LatestReadingsChecks.RunAsync(db, writer);
     Console.WriteLine("All MySQL integration checks passed.");
 
     Task<long> Count(string table) => db.ExecuteScalarAsync<long>($"SELECT COUNT(*) FROM `{table}`");

@@ -12,6 +12,9 @@ public sealed class ShmsStatusService : IShmsStatusService
         _repository = repository;
     }
 
+    public Task<IReadOnlyList<LatestSensorReadingResponse>> GetLatestReadingsAsync(CancellationToken cancellationToken = default) =>
+        _repository.GetLatestReadingsAsync(cancellationToken);
+
     public async Task<ShmsSystemStatusResponse> GetAsync(CancellationToken cancellationToken = default)
     {
         var lastMqttAt = await _repository.GetLastMqttAtAsync(cancellationToken);
