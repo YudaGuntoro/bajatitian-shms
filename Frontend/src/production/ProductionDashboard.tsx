@@ -264,7 +264,7 @@ export default function ProductionDashboard() {
     : "unknown";
   const sensorInputStatus: HealthState = isRecent(dashboard.lastMqttAt, now) ? "online" : "offline";
   const sensorRows = useMemo(() => {
-    return configuration.topics.map((config) => {
+    return configuration.topics.filter((config) => config.enabled).map((config) => {
       const logs = dashboard.logs.filter((log) => getLogSensor(log, configuration.topics) === config.code);
       const readings = (dashboard.latestReadings ?? []).filter((reading) =>
         normalizeDeviceCode(reading.device_code) === config.code.toUpperCase() || reading.topic === config.topic);
@@ -279,14 +279,11 @@ export default function ProductionDashboard() {
       const lastAt = (readings.length > 0 ? readings.map((reading) => reading.received_at) : logs.map((log) => log.time_stamp))
         .filter((value) => parseDate(value) !== null)
         .sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null;
-      const active = config?.enabled ?? false;
-
       return {
-        active,
         code: config.code,
         lastAt,
         name: config.name,
-        online: active && isRecent(lastAt, now),
+        online: isRecent(lastAt, now),
         topic: config.topic,
         values,
       };
@@ -470,8 +467,7 @@ export default function ProductionDashboard() {
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Sensors</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {sensorRows.filter((sensor) => sensor.online).length} online
-            {" · "}{sensorRows.filter((sensor) => sensor.active && !sensor.online).length} offline
-            {" · "}{sensorRows.filter((sensor) => !sensor.active).length} inactive
+            {" · "}{sensorRows.filter((sensor) => !sensor.online).length} offline
           </p>
         </div>
         <details className="group mt-3">
@@ -481,12 +477,15 @@ export default function ProductionDashboard() {
           </summary>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {sensorRows.map((sensor) => (
-              <div className="h-[120px] min-w-0 overflow-y-auto rounded-lg border border-slate-200 p-3 dark:border-slate-700" key={sensor.code}>
+              <div
+                className={`min-h-[120px] min-w-0 rounded-lg border p-3 ${sensor.online ? "border-green-500 dark:border-green-500" : "border-red-500 dark:border-red-500"}`}
+                key={sensor.code}
+              >
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-slate-900 dark:text-white" title={sensor.name}>{sensor.code}</p>
                   <StatusPill
-                    label={!sensor.active ? "Inactive" : sensor.online ? "Online" : "Offline"}
-                    status={!sensor.active ? "unknown" : sensor.online ? "online" : "offline"}
+                    label={sensor.online ? "Online" : "Offline"}
+                    status={sensor.online ? "online" : "offline"}
                   />
                 </div>
                 {sensor.values.length > 0 ? (
@@ -503,6 +502,7 @@ export default function ProductionDashboard() {
               </div>
             ))}
           </div>
+          {sensorRows.length === 0 && <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">No active sensors</p>}
         </details>
       </section>
 
