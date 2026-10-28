@@ -237,3 +237,34 @@ For MySQL on the VPS host, use `host.docker.internal` in the container connectio
 The default frontend host port is `8091`; the API host port is `5274`.
 Initialize the new database using the bootstrap instructions in `Backend/README.md`,
 then create the Worker settings file and start the selected Compose services.
+
+### Frontend startup and host port conflicts
+
+The `web` service sets `HOSTNAME=0.0.0.0` so the Next.js standalone server
+binds to all container interfaces. If logs show `getaddrinfo EAI_AGAIN` with
+a container ID as the hostname, pull this Compose configuration and recreate
+`web`. An image rebuild is not required for this environment change.
+
+If Docker reports that a host port is already allocated, identify its owner
+before choosing a free frontend port:
+
+```bash
+docker ps --format 'table {{.Names}}\t{{.Ports}}'
+sudo ss -ltnp
+```
+
+Set `FRONTEND_HOST_PORT` in the existing `.env` to a free port. Preserve the
+actual API port in `API_HOST_PORT`; a running API on `5276` should keep that
+value rather than the example default `5274`. Port `8093` is occupied by
+`utility-monitoring-web` on the VPS as reported on 28 October 2026.
+
+After editing `.env`, recreate only the frontend using the existing built image:
+
+```bash
+docker compose -f docker-compose.vps.yml --env-file .env up -d --no-deps --no-build --force-recreate web
+docker compose -f docker-compose.vps.yml --env-file .env logs --tail=50 web
+```
+
+If the frontend host port changes, update any reverse proxy upstream to the
+same port. If users access the frontend directly by IP and port, also update
+`FRONTEND_ORIGIN` and apply the API environment during a planned API restart.
